@@ -12,6 +12,10 @@
  * @version  3.0.0
  */
 
+require_once XGP_ROOT . 'application/core/constants.php';
+require_once XGP_ROOT . 'vendor/autoload.php';
+use Illuminate\Database\Capsule;
+
 use application\core\Database;
 use application\core\Hooks;
 use application\core\Sessions;
@@ -26,10 +30,20 @@ if (file_exists($config_file)) {
 
     require $config_file;
     $installed  = true;
+    $capsule->addConnection([
+        'driver'    => 'mysql',
+        'host'      => DB_HOST,
+        'database'  => DB_NAME,
+        'username'  => DB_USER,
+        'password'  => DB_PASS,
+        'charset'   => 'utf8',
+        'collation' => 'utf8_unicode_ci',
+        'prefix'    => DB_PREFIX,
+    ]);
 }
 
 // Require some stuff
-require_once XGP_ROOT . 'application/core/constants.php';
+
 require_once XGP_ROOT . CORE_PATH . 'Database.php';
 require_once XGP_ROOT . CORE_PATH . 'XGPCore.php';
 require_once XGP_ROOT . CORE_PATH . 'Options.php';

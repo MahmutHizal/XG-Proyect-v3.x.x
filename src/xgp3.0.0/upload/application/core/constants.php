@@ -130,26 +130,26 @@ if (!defined('DB_PREFIX')) {
 }
 
 // TABLES
-define('ACS_FLEETS', DB_PREFIX . 'acs_fleets');
-define('ALLIANCE', DB_PREFIX . 'alliance');
-define('ALLIANCE_STATISTICS', DB_PREFIX . 'alliance_statistics');
-define('BANNED', DB_PREFIX . 'banned');
-define('BUDDY', DB_PREFIX . 'buddys');
-define('BUILDINGS', DB_PREFIX . 'buildings');
-define('DEFENSES', DB_PREFIX . 'defenses');
-define('FLEETS', DB_PREFIX . 'fleets');
-define('MESSAGES', DB_PREFIX . 'messages');
-define('NOTES', DB_PREFIX . 'notes');
-define('OPTIONS', DB_PREFIX . 'options');
-define('PLANETS', DB_PREFIX . 'planets');
-define('PREMIUM', DB_PREFIX . 'premium');
-define('RESEARCH', DB_PREFIX . 'research');
-define('REPORTS', DB_PREFIX . 'reports');
-define('SESSIONS', DB_PREFIX . 'sessions');
-define('SETTINGS', DB_PREFIX . 'settings');
-define('SHIPS', DB_PREFIX . 'ships');
-define('USERS', DB_PREFIX . 'users');
-define('USERS_STATISTICS', DB_PREFIX . 'users_statistics');
+define('ACS_FLEETS', 'acs_fleets');
+define('ALLIANCE', 'alliance');
+define('ALLIANCE_STATISTICS', 'alliance_statistics');
+define('BANNED', 'banned');
+define('BUDDY', 'buddys');
+define('BUILDINGS', 'buildings');
+define('DEFENSES', 'defenses');
+define('FLEETS', 'fleets');
+define('MESSAGES', 'messages');
+define('NOTES', 'notes');
+define('OPTIONS', 'options');
+define('PLANETS', 'planets');
+define('PREMIUM', 'premium');
+define('RESEARCH', 'research');
+define('REPORTS', 'reports');
+define('SESSIONS', 'sessions');
+define('SETTINGS', 'settings');
+define('SHIPS', 'ships');
+define('USERS', 'users');
+define('USERS_STATISTICS', 'users_statistics');
 
 // FOR MAILING
 $charset = 'UTF-8';
