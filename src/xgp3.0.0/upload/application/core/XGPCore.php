@@ -17,6 +17,7 @@ namespace application\core;
 use application\libraries\TemplateLib;
 use application\libraries\UsersLib;
 use application\models;
+use Illuminate\Database\Capsule\Manager;
 
 /**
  * XGPCore Class
@@ -57,8 +58,8 @@ abstract class XGPCore
      */
     private function setDbClass()
     {
-        require_once XGP_ROOT. '/application/core/Database.php';
-        self::$db   = new Database();
+        //require_once XGP_ROOT. '/application/core/Database.php';
+        //self::$db   = Manager::connection();
     }
 
     /**

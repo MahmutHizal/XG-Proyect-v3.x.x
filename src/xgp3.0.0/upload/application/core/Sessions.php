@@ -13,6 +13,8 @@
  */
 
 namespace application\core;
+use Carbon\Carbon;
+use Illuminate\Database\Capsule\Manager as Capsule;
 
 /**
  * Sessions Class
@@ -24,19 +26,13 @@ namespace application\core;
  * @link     http://www.xgproyect.org
  * @version  3.0.0
  */
-class Sessions extends XGPCore
+class Sessions extends XGPCore implements \SessionHandlerInterface
 {
     /**
      *
      * @var boolean
      */
     private $alive  = true;
-    
-    /**
-     *
-     * @var Database
-     */
-    private $dbc    = null;
 
     /**
      * __construct
@@ -48,21 +44,8 @@ class Sessions extends XGPCore
         parent::__construct();
 
         // WE'RE GOING TO HANDLE A DIFFERENT DB OBJECT FOR THE SESSIONS
-        $this->dbc  = clone parent::$db;
+        // $this->dbc  = Capsule::connection();
 
-        session_set_save_handler(
-            array (&$this, 'open'),
-            array (&$this, 'close'),
-            array (&$this, 'read'),
-            array (&$this, 'write'),
-            array (&$this, 'delete'),
-            array (&$this, 'clean')
-        );
-
-        if (session_id() == '') {
-
-            session_start();
-        }
     }
 
     /**
@@ -114,9 +97,9 @@ class Sessions extends XGPCore
      *
      * @return Database
      */
-    private function open()
+    public function open($thePath, $theID)
     {
-        return $this->dbc->openConnection();
+        return true;
     }
 
     /**
@@ -124,9 +107,9 @@ class Sessions extends XGPCore
      *
      * @return void
      */
-    private function close()
+    public function close()
     {
-        return $this->dbc->closeConnection();
+        return true;
     }
 
     /**
@@ -136,24 +119,17 @@ class Sessions extends XGPCore
      *
      * @return void
      */
-    private function read($sid)
+    public function read($sid)
     {
-        $row    = $this->dbc->query(
-            "SELECT `session_data`
-            FROM " . SESSIONS . "
-            WHERE `session_id` = '" .  $this->dbc->escapeValue($sid) . "'
-            LIMIT 1"
-        );
-
-        if ($this->dbc->numRows($row) == 1) {
-
-            $fields = $this->dbc->fetchAssoc($row);
-
-            return $fields['session_data'];
-        } else {
-
+        $query = Capsule::table(SESSIONS)->select('session_data')->where('session_id', '=', $sid);
+        if($query->count() > 0)
+            return $query->first()->session_data;
+        else
+        {
+            $query->insert(["session_id" => $sid, "created_at" => Carbon::now()]);
             return '';
         }
+
     }
 
     /**
@@ -164,14 +140,16 @@ class Sessions extends XGPCore
      *
      * @return array
      */
-    private function write($sid, $data)
+    public function write($sid, $data)
     {
-        $this->dbc->query(
-            "REPLACE INTO `" . SESSIONS . "` (`session_id`, `session_data`)
-            VALUES ('" . $this->dbc->escapeValue($sid) . "', '" . $this->dbc->escapeValue($data) . "')"
-        );
-
-        return ($this->dbc->affectedRows() > 0);
+        $query = Capsule::table(SESSIONS)
+            ->where('session_id', '=', $sid);
+        if($query->count() == 0)
+            $query->insert(['session_id' => $sid, 'session_data' => $data]);
+        else
+            $query->update(['session_data' => $data]);
+        //die(print_r(Capsule::connection()->getQueryLog(), false));
+        return true;
     }
 
     /**
@@ -181,16 +159,11 @@ class Sessions extends XGPCore
      *
      * @return array
      */
-    private function destroy($sid)
+    public function destroy($sid)
     {
-        $this->dbc->query(
-            "DELETE FROM `" . SESSIONS . "`
-            WHERE `session_id` = '" . $this->dbc->escapeValue($sid) . "'"
-        );
+        $_SESSION   = [];
 
-        $_SESSION   = array();
-
-        return $this->dbc->affectedRows();
+        return (bool)Capsule::table(SESSIONS)->where('session_id', '=', $sid)->delete();
     }
 
     /**
@@ -200,14 +173,13 @@ class Sessions extends XGPCore
      *
      * @return array
      */
-    private function clean($expire)
+    public function gc($expire)
     {
-        $this->dbc->query(
-            "DELETE FROM `" . SESSIONS . "`
-            WHERE DATE_ADD(`session_last_accessed`, INTERVAL " . (int)$expire . " SECOND) < NOW()"
+        return (bool)(Capsule::table(SESSIONS)
+            ->where(Capsule::connection()->raw("DATE_ADD(`created_at` INTERVAL " . (int)$expire . " SECOND) < NOW()"))
+            ->orWhere(Capsule::connection()->raw("DATE_ADD(`updated_at` INTERVAL " . (int)$expire . " SECOND) < NOW()"))
+            ->delete()
         );
-
-        return $this->dbc->affectedRows();
     }
 }
 

@@ -15,8 +15,7 @@
 require_once XGP_ROOT . 'application/core/constants.php';
 require_once XGP_ROOT . 'vendor/autoload.php';
 use Illuminate\Database\Capsule;
-
-use application\core\Database;
+//use application\core\Database;
 use application\core\Hooks;
 use application\core\Sessions;
 use application\libraries\FunctionsLib;
@@ -30,21 +29,28 @@ if (file_exists($config_file)) {
 
     require $config_file;
     $installed  = true;
-    $capsule->addConnection([
-        'driver'    => 'mysql',
-        'host'      => DB_HOST,
-        'database'  => DB_NAME,
-        'username'  => DB_USER,
-        'password'  => DB_PASS,
-        'charset'   => 'utf8',
-        'collation' => 'utf8_unicode_ci',
-        'prefix'    => DB_PREFIX,
-    ]);
 }
+else {
+    define('DB_HOST', null);
+    define('DB_NAME', null);
+    define('DB_USER', null);
+    define('DB_PASS', null);
+}
+$capsule = new Capsule\Manager();
+$capsule->addConnection([
+    'driver'    => 'mysql',
+    'host'      => DB_HOST,
+    'database'  => DB_NAME,
+    'username'  => DB_USER,
+    'password'  => DB_PASS,
+    'charset'   => 'utf8',
+    'collation' => 'utf8_unicode_ci',
+    'prefix'    => DB_PREFIX,
+]);
+$capsule->setAsGlobal();
 
-// Require some stuff
+//require_once XGP_ROOT . CORE_PATH . 'Database.php';
 
-require_once XGP_ROOT . CORE_PATH . 'Database.php';
 require_once XGP_ROOT . CORE_PATH . 'XGPCore.php';
 require_once XGP_ROOT . CORE_PATH . 'Options.php';
 require_once XGP_ROOT . CORE_PATH . 'Xml.php';

@@ -15,6 +15,7 @@
 namespace application\libraries;
 
 use application\core\XGPCore;
+use Illuminate\Database\Capsule\Manager as Capsule;
 
 /**
  * UsersLib Class
@@ -290,33 +291,35 @@ class UsersLib extends XGPCore
     {
         $user_row   = array();
 
-        $this->user_data = parent::$db->query(
-            "SELECT u.*,
-                pre.*,
-                se.*,
-                usul.user_statistic_total_rank,
-                usul.user_statistic_total_points,
-                r.*,
-                a.alliance_name,
-                (SELECT COUNT(`message_id`) AS `new_message` 
-                FROM `" . MESSAGES . "` 
-                WHERE `message_receiver` = u.`user_id` AND `message_read` = 0) AS `new_message`
-            FROM " . USERS . " AS u
-            INNER JOIN " . SETTINGS . " AS se ON se.setting_user_id = u.user_id
-            INNER JOIN " . USERS_STATISTICS . " AS usul ON usul.user_statistic_user_id = u.user_id
-            INNER JOIN " . PREMIUM . " AS pre ON pre.premium_user_id = u.user_id
-            INNER JOIN " . RESEARCH . " AS r ON r.research_user_id = u.user_id
-            LEFT JOIN " . ALLIANCE . " AS a ON a.alliance_id = u.user_ally_id
-            WHERE (u.user_name = '" . parent::$db->escapeValue($_SESSION['user_name']) . "')
-            LIMIT 1;"
-        );
+        $this->user_data = Capsule::table(USERS)
+            ->select([
+                         USERS . ".*",
+                         PREMIUM . ".*",
+                         RESEARCH . ".*",
+                         SETTINGS . ".*",
+                         USERS_STATISTICS . ".*",
+                         ALLIANCE . ".alliance_name",
+                         Capsule::connection()->raw("(" .
+                                                    Capsule::table(MESSAGES)
+                                                        ->select(Capsule::connection()->raw("COUNT(*) as new_message"))
+                                                        ->toSql()
+                                                    . " WHERE `message_receiver` = `user_id` AND `message_read` = 1) AS `new_messages`"
 
-        if (parent::$db->numRows($this->user_data) != 1 && !defined('IN_LOGIN')) {
+                         )
+                     ])
+            ->join(SETTINGS, 'setting_user_id', '=', 'user_id')
+            ->join(USERS_STATISTICS, 'user_statistic_user_id', '=', 'user_id')
+            ->join(PREMIUM, 'premium_user_id', '=', 'user_id')
+            ->join(RESEARCH, 'research_user_id', '=', 'user_id')
+            ->leftJoin(ALLIANCE, 'alliance_id', '=', 'user_ally_id')
+            ->where('user_name', '=', $_SESSION['user_name']);
 
+
+
+        if ($this->user_data->count() != 1  && !defined('IN_LOGIN'))
             FunctionsLib::message($this->langs['ccs_multiple_users'], XGP_ROOT, 3, false, false);
-        }
 
-        $user_row   = parent::$db->fetchArray($this->user_data);
+        $user_row   = get_object_vars($this->user_data->first());
 
         if ($user_row['user_id'] != $_SESSION['user_id'] && !defined('IN_LOGIN')) {
 
@@ -336,13 +339,15 @@ class UsersLib extends XGPCore
             die(parent::$page->parseTemplate(parent::$page->getTemplate('home/banned_message'), $parse));
         }
 
-        parent::$db->query("UPDATE " . USERS . " SET
-            					`user_onlinetime` = '" . time() . "',
-            					`user_current_page` = '" . parent::$db->escapeValue($_SERVER['REQUEST_URI']) . "',
-            					`user_lastip` = '" . parent::$db->escapeValue($_SERVER['REMOTE_ADDR']) . "',
-            					`user_agent` = '" . parent::$db->escapeValue($_SERVER['HTTP_USER_AGENT']) . "'
-            					WHERE `user_id` = '" . parent::$db->escapeValue($_SESSION['user_id']) . "'
-            					LIMIT 1;");
+        Capsule::table(USERS)
+            ->where('user_id', '=', $_SESSION["user_id"])
+            ->update([
+                         'user_onlinetime' => Carbon::now(),
+                         'updated_at' => Carbon::now(),
+                         'user_current_page' => $_SERVER['REQUEST_URI'],
+                         'user_lastip' => $_SERVER['REMOTE_ADDR'],
+                         'user_agent' => $_SERVER['HTTP_USER_AGENT']
+                     ]);
 
         // pass the data
         $this->user_data = $user_row;
