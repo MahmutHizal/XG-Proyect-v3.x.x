@@ -16,6 +16,7 @@ namespace application\libraries;
 
 use application\core\XGPCore;
 use application\core\Options;
+use Illuminate\Database\Capsule\Manager;
 
 /**
  * FunctionsLib Class
@@ -73,7 +74,7 @@ abstract class FunctionsLib extends XGPCore
      */
     public static function formatText($text)
     {
-        $text   = parent::$db->escapeValue($text);
+        $text   = stripslashes($text);
         $text   = trim(nl2br(strip_tags($text, '<br>')));
         $text   = preg_replace('|[\r][\n]|', '\\r\\n', $text);
 
@@ -115,21 +116,10 @@ abstract class FunctionsLib extends XGPCore
      *
      * @return string
      */
-    public static function readConfig($config_name = '', $all = false)
+    public static function readConfig($config_name = NULL, $all = false)
     {
-        $configs = Options::getInstance();
-
-        if ($all) {
-
-            foreach ($configs->getOptions()  as $row) {
-                $return[$row['option_name']]   = $row['option_value'];
-            }
-            
-            return $return;
-        } else {
-
-            return $configs->getOptions($config_name);
-        }
+        return Options::getInstance()
+            ->getOptions(($all ? NULL : $config_name));
     }
 
     /**
@@ -284,32 +274,39 @@ abstract class FunctionsLib extends XGPCore
      */
     public static function sortPlanets($current_user)
     {
-        $order  = $current_user['setting_planet_order'] == 1 ? "DESC" : "ASC";
-        $sort   = $current_user['setting_planet_sort'];
+        $current_user = (is_object($current_user) ? get_object_vars($current_user) : $current_user);
 
-        $planets = "SELECT `planet_id`, `planet_name`, `planet_galaxy`, `planet_system`, `planet_planet`, `planet_type`
-                    FROM " . PLANETS . "
-                    WHERE `planet_user_id` = '" . (int) $current_user['user_id'] . "'
-                        AND `planet_destroyed` = 0 ORDER BY ";
+        $order  = $current_user['setting_planet_order'] == 1 ? "DESC" : "ASC";
+        $sort   = 1;
+
+        $planets = Manager::table(PLANETS)
+            ->select([
+                "planet_id",
+                "planet_name",
+                "planet_galaxy",
+                "planet_system",
+                "planet_planet",
+                "planet_type"
+                     ])
+            ->where('planet_user_id', '=', $current_user['user_id'])
+            ->whereNull('planet_destroyed');
 
         switch ($sort) {
             case 0:
-                $planets    .= "`planet_id` " . $order;
-
+                $planets->orderBy('planet_id', $order);
                 break;
-
             case 1:
-                $planets    .= "`planet_galaxy`, `planet_system`, `planet_planet`, `planet_type` " . $order;
-
+                $planets->orderBy('planet_galaxy', $order);
+                $planets->orderBy('planet_system', $order);
+                $planets->orderBy('planet_planet', $order);
+                $planets->orderBy('planet_type', $order);
                 break;
-
             case 2:
-                $planets    .= "`planet_name` " . $order;
-
+                $planets->orderBy('planet_name', $order);
                 break;
         }
 
-        return parent::$db->query($planets);
+        return $planets->get();
     }
 
     /**
@@ -492,24 +489,20 @@ abstract class FunctionsLib extends XGPCore
      *
      * @return string
      */
-    public static function setUrl($url, $title, $content, $attributes = '')
+    public static function setUrl($url = NULL, $title = NULL, $content, $attributes = NULL)
     {
-        if (empty($url)) {
+        $theAttributes = [
+            "href"      => (!empty($url) ? $url : "#"),
+            "title"     => (!empty($title) ? $title : "")
+        ];
+        if(is_array($attributes))
+            $theAttributes = array_merge($theAttributes, $attributes);
 
-            $url = '#';
-        }
+        ksort($theAttributes);
 
-        if (!empty($title)) {
-
-            $title = 'title="' . $title . '"';
-        }
-
-        if (!empty($attributes)) {
-
-            $attributes = ' ' . $attributes;
-        }
-
-        return '<a href="' . $url . '" ' . $title . ' ' . $attributes . '>' . $content . '</a>';
+        return '<a ' . implode(' ', array_map(function($keys, $values){
+            return $keys . '="' . $values . '"';
+        }, array_keys($theAttributes), array_values($theAttributes))) . (is_string($attributes) ? ' ' . $attributes : '') . '>' . $content . '</a>';
     }
 
     /**
@@ -521,14 +514,20 @@ abstract class FunctionsLib extends XGPCore
      *
      * @return string
      */
-    public static function setImage($path, $title = 'img', $attributes = '')
+    public static function setImage($path, $title = 'img', $attributes = NULL)
     {
-        if (!empty($attributes)) {
+        $theAttributes = [
+            "src" => $path,
+            "title" => $title,
+            "border" => 0
+        ];
+        if(is_array($attributes))
+            $theAttributes = array_merge($theAttributes, $attributes);
 
-            $attributes = ' ' . $attributes;
-        }
-
-        return '<img src="' . $path . '" title="' . $title . '" border="0"' . $attributes . '>';
+        ksort($theAttributes);
+        return '<img '. implode(' ', array_map(function($keys, $values){
+            return $keys . '="' . $values . '"';
+        }, array_keys($theAttributes), array_values($theAttributes))) . (is_string($attributes) ? ' ' . $attributes : '') . '>';
     }
 
     /**
@@ -596,6 +595,7 @@ abstract class FunctionsLib extends XGPCore
     /**
      * getCurrentLanguage
      *
+     * @param bool $installed
      * @return string
      */
     public static function getCurrentLanguage($installed = false)

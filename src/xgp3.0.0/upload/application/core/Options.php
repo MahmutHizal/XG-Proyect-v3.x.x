@@ -13,6 +13,7 @@
  */
 
 namespace application\core;
+use Illuminate\Database\Capsule\Manager;
 
 /**
  * Options Class
@@ -66,20 +67,20 @@ class Options extends XGPCore
      *
      * @return mixed
      */
-    public function getOptions($option = '')
+    public function getOptions($option = NULL)
     {
-        if ($option == '') {
-
-            return parent::$db->query(
-                "SELECT * FROM `" . OPTIONS . "`;"
-            );
+        if(!$option) {
+            $ReturnER = [];
+            $query = Manager::table(OPTIONS)->get(["option_name", "option_value"]);
+            foreach ($query as $item) {
+                $ReturnER[$item->option_name] = $item->option_value;
+            }
+            return $ReturnER;
         } else {
-
-            return parent::$db->queryFetch(
-                "SELECT * 
-                    FROM `" . OPTIONS . "` 
-                    WHERE `option_name` = '" . $option . "';"
-            )['option_value'];
+            $query = Manager::table(OPTIONS)
+                ->where('option_name', '=', $option)
+                ->first(["option_value"]);
+            return ($query ? $query->option_value : false);
         }
     }
     
@@ -91,20 +92,32 @@ class Options extends XGPCore
      *
      * @return boolean
      */
-    public function writeOptions($option, $value = '')
+    public function writeOptions($option, $value = NULL)
     {
-        if ($option != '') {
-            
-            if (parent::$db->query(
-                "UPDATE `" . OPTIONS . "` 
-                    SET `option_value` = '" . $value . "' 
-                    WHERE `option_name` = '" . $option . "';"
-            )) {
-                    return true;
+        if(is_array($option))
+        {
+            foreach ($option as $option_name => $option_value)
+            {
+                $this->writeOption($option_name, $option_value);
             }
+            return Manager::connection()
+                ->getPdo()
+                ->errorCode();
         }
-        
-        return false;
+        else
+        {
+            return $this->writeOption($option, $value);
+        }
+    }
+
+    private function writeOption($option_name, $option_value)
+    {
+        return (!$this->getOptions ($option_name) && !empty($option_value)
+            ? Manager::table (OPTIONS)
+                ->insert (["option_name" => $option_name, "option_value" => $option_value])
+            : Manager::table (OPTIONS)
+                ->where ('option_name', '=', $option_name)
+                ->update (["option_value" => $option_value]));
     }
     
     /**
@@ -117,17 +130,7 @@ class Options extends XGPCore
      */
     public function insertOption($option, $value = '')
     {
-        if ($option != '') {
-            
-            if (parent::$db->query(
-                "INSERT INTO `" . OPTIONS . "` 
-                    (`option_name`, `option_value`) VALUES('" . $option . "', '" . $value . "');"
-            )) {
-                    return true;
-            }
-        }
-        
-        return false;
+        return $this->writeOption($option, $value);
     }
     
     
@@ -140,17 +143,9 @@ class Options extends XGPCore
      */
     public function deleteOption($option)
     {
-        if ($option != '') {
-            
-            if (parent::$db->query(
-                "DELETE `" . OPTIONS . "` 
-                    WHERE `option_name` = '" . $option . "';"
-            )) {
-                    return true;
-            }
-        }
-        
-        return false;
+        return Manager::table(OPTIONS)
+            ->where('option_name', '=', $option)
+            ->delete();
     }
 }
 

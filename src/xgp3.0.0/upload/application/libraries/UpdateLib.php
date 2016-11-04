@@ -15,6 +15,8 @@
 namespace application\libraries;
 
 use application\core\XGPCore;
+use Illuminate\Database\Capsule\Manager as Capsule;
+use Carbon\Carbon;
 
 /**
  * UpdateLib Class
@@ -65,31 +67,46 @@ class UpdateLib extends XGPCore
             $del_deleted    = time() - (60 * 60 * 24 * 7); // 1 WEEK
 
             // USERS TO DELETE
-            $ChooseToDelete = parent::$db->query(
-                "SELECT u.`user_id`
-                FROM `" . USERS . "` AS u
-                INNER JOIN `" . SETTINGS . "` AS s ON s.setting_user_id = u.user_id
-                WHERE (s.`setting_delete_account` < '".$del_deleted."' AND s.`setting_delete_account` <> 0) OR
-                (u.`user_onlinetime` < '".$del_inactive."' AND u.`user_onlinetime` <> 0 AND u.`user_authlevel` <> 3)"
-            );
+            $ChooseToDelete = Capsule::table(USERS)
+                ->select(["user_id"])
+                ->join(SETTINGS, 'setting_user_id', '=', 'user_id')
+                ->where([
+                    ["setting_delete_account", "<", $del_deleted],
+                    ["setting_delete_account", "<>", "0"]
+                ])
+                ->orWhere([
+                    ["user_onlinetime", "<", Carbon::now()->subMonth(1)],
+                    ["user_onlinetime", "<>", "0"],
+                    ["user_authlevel", "<>", "3"]
+                ])
+                ->get();
 
             if ($ChooseToDelete) {
-                
-                while ($delete = parent::$db->fetchArray($ChooseToDelete)) {
-                    
-                    parent::$users->deleteUser($delete['user_id']);
+
+                foreach($ChooseToDelete as $OneOf)
+                {
+                    parent::$users->deleteUser($OneOf->user_id);
                 }
             }
 
-            parent::$db->query("DELETE FROM " . MESSAGES . " WHERE `message_time` < '". $del_before ."';");
-            parent::$db->query("DELETE FROM " . REPORTS . " WHERE `report_time` < '". $del_before ."';");
-            parent::$db->query(
-                "DELETE p,b,d,s FROM " . PLANETS . " AS p
-                INNER JOIN " . BUILDINGS . " AS b ON b.building_planet_id = p.`planet_id`
-                INNER JOIN " . DEFENSES . " AS d ON d.defense_planet_id = p.`planet_id`
-                INNER JOIN " . SHIPS . " AS s ON s.ship_planet_id = p.`planet_id`
-                WHERE `planet_destroyed` < '" . $del_planets . "' AND `planet_destroyed` <> 0;"
-            );
+            Capsule::table(MESSAGES)
+                ->where("created_at", "<", Carbon::now()->subWeek(1))
+                ->orWhere("updated_at", "<", Carbon::now()->subWeek(1))
+                ->delete();
+            Capsule::table(REPORTS)
+                ->where("created_at", "<", Carbon::now()->subWeek(1))
+                ->orWhere("updated_at", "<", Carbon::now()->subWeek(1))
+                ->delete();
+
+            Capsule::table(PLANETS)
+                ->where([
+                    ["planet_destroyed", "<", Carbon::now()->subDay(1)],
+                    ["planet_destroyed", "<>", 0]
+                ])
+                ->join(BUILDINGS, 'building_planet_id', '=', 'planet_id')
+                ->join(DEFENSES, 'defense_planet_id', '=', 'planet_id')
+                ->join(SHIPS, 'ship_planet_id', '=', 'planet_id')
+                ->delete();
             
             FunctionsLib::updateConfig('last_cleanup', time());
         }
@@ -164,53 +181,57 @@ class UpdateLib extends XGPCore
         
         include_once XGP_ROOT . LIB_PATH . 'MissionControlLib.php';
 
-        $_fleets    = parent::$db->query(
-            "SELECT 
-            fleet_start_galaxy, 
-            fleet_start_system, 
-            fleet_start_planet, 
-            fleet_start_type
-            FROM " . FLEETS . "
-            WHERE `fleet_start_time` <= '" . time() . "' AND `fleet_mess` ='0'
-            ORDER BY fleet_id ASC;"
-        );
+        $_fleets = Capsule::table(FLEETS)
+            ->select([
+                "fleet_start_galaxy",
+                "fleet_start_system",
+                "fleet_start_planet",
+                "fleet_start_type"
+            ])
+            ->where([
+                ["fleet_start_time", "<=", Carbon::now()],
+                ["fleet_mess", "=", "0"]
+            ])
+            ->orderBy('fleet_id', 'ASC');
 
-        while ($row = parent::$db->fetchArray($_fleets)) {
-            
-            $array                  = array();
-            $array['planet_galaxy'] = $row['fleet_start_galaxy'];
-            $array['planet_system'] = $row['fleet_start_system'];
-            $array['planet_planet'] = $row['fleet_start_planet'];
-            $array['planet_type']   = $row['fleet_start_type'];
+        if ($_fleets->count() > 0)
+        {
+            foreach ($_fleets->get() as $handle)
+            {
+                $array = [];
+                $array['planet_galaxy'] = $handle->fleet_start_galaxy;
+                $array['planet_system'] = $handle->fleet_start_system;
+                $array['planet_planet'] = $handle->fleet_start_planet;
+                $array['planet_type']   = $handle->fleet_start_type;
 
-            new MissionControlLib($array);
+                new MissionControlLib($array);
+            }
         }
+        unset($_fleets);
 
-        parent::$db->freeResult($_fleets);
+        $_fleets = Capsule::table(FLEETS)
+            ->select([
+                "fleet_end_galaxy",
+                "fleet_end_system",
+                "fleet_end_planet",
+                "fleet_end_type"
+            ])
+            ->where("fleet_end_time", "<=", Carbon::now())
+            ->orderBy('fleet_id', 'ASC');
 
-        $_fleets    = parent::$db->query(
-            "SELECT 
-            fleet_end_galaxy, 
-            fleet_end_system, 
-            fleet_end_planet, 
-            fleet_end_type
-            FROM " . FLEETS . "
-            WHERE `fleet_end_time` <= '" . time() . "
-            ORDER BY fleet_id ASC';"
-        );
+        if ($_fleets->count() > 0)
+        {
+            foreach ($_fleets->get() as $handle)
+            {
+                $array = [];
+                $array['planet_galaxy'] = $handle->fleet_end_galaxy;
+                $array['planet_system'] = $handle->fleet_end_system;
+                $array['planet_planet'] = $handle->fleet_end_planet;
+                $array['planet_type']   = $handle->fleet_end_type;
 
-        while ($row = parent::$db->fetchArray($_fleets)) {
-            $array                  = array();
-            $array['planet_galaxy'] = $row['fleet_end_galaxy'];
-            $array['planet_system'] = $row['fleet_end_system'];
-            $array['planet_planet'] = $row['fleet_end_planet'];
-            $array['planet_type']   = $row['fleet_end_type'];
-
-            new MissionControlLib($array);
+                new MissionControlLib($array);
+            }
         }
-
-        parent::$db->freeResult($_fleets);
-
         unset($_fleets);
     }
 
@@ -331,19 +352,21 @@ class UpdateLib extends XGPCore
                     $current_planet[$resource[$element]]
                 );
 
-                parent::$db->query(
-                    "UPDATE " . PLANETS . " AS p
-                    INNER JOIN " . USERS_STATISTICS . " AS s ON s.user_statistic_user_id = p.planet_user_id
-                    INNER JOIN " . BUILDINGS . " AS b ON b.building_planet_id = p.`planet_id` SET
-                    `".$resource[$element]."` = '".$current_planet[$resource[$element]]."',
-                    `user_statistic_buildings_points` = `user_statistic_buildings_points` + '" .
-                        $current_planet['building_points'] . "',
-                    `planet_b_building` = '". $current_planet['planet_b_building'] ."',
-                    `planet_b_building_id` = '". $current_planet['planet_b_building_id'] ."',
-                    `planet_field_current` = '" . $current_planet['planet_field_current'] . "',
-                    `planet_field_max` = '" . $current_planet['planet_field_max'] . "'
-                    WHERE `planet_id` = '" . $current_planet['planet_id'] . "';"
-                );
+                $query = Capsule::table(PLANETS)
+                    ->join(USERS_STATISTICS, USERS_STATISTICS . '.user_statistic_user_id', '=', PLANETS . '.planet_user_id')
+                    ->join(BUILDINGS, BUILDINGS . '.building_planet_id', '=', PLANETS . '.planet_user_id')
+                    ->where(PLANETS . '.planet_id', '=', $current_planet['planet_id']);
+
+                $updater = [];
+                $updater[BUILDINGS . '.' . $resource[$element]] = $current_planet[$resource[$element]];
+                $updater[USERS_STATISTICS . '.user_statistic_buildings_points'] = $current_user["user_statistic_buildings_points"] + $current_planet['building_points'];
+                $updater[PLANETS . '.planet_b_building'] = $current_planet['planet_b_building'];
+                $updater[PLANETS . '.planet_b_building_id'] = $current_planet['planet_b_building_id'];
+                $updater[PLANETS . '.planet_field_current'] = $current_planet['planet_field_current'];
+                $updater[PLANETS . '.planet_field_max'] = $current_planet['planet_field_max'];
+
+                $query->update($updater);
+                unset($query);
                 
                 $ret_value = true;
             } else {
@@ -354,12 +377,13 @@ class UpdateLib extends XGPCore
             $current_planet['planet_b_building']    = 0;
             $current_planet['planet_b_building_id'] = 0;
 
-            parent::$db->query(
-                "UPDATE " . PLANETS . " SET
-                `planet_b_building` = '". $current_planet['planet_b_building'] ."',
-                `planet_b_building_id` = '". $current_planet['planet_b_building_id'] ."'
-                WHERE `planet_id` = '" . $current_planet['planet_id'] . "';"
-            );
+            Capsule::table(PLANETS)
+                ->where(PLANETS . '.planet_id', '=', $current_planet['planet_id'])
+                ->update([
+                    "planet_b_building" => $current_planet['planet_b_building'],
+                    "planet_b_building_id" => $current_planet['planet_b_building_id']
+                ]);
+
 
             $ret_value = false;
         }

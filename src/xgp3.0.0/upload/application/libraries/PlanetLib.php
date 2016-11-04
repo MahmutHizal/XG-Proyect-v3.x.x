@@ -15,6 +15,8 @@
 namespace application\libraries;
 
 use application\core\XGPCore;
+use Illuminate\Database\Capsule\Manager as Capsule;
+use Carbon\Carbon;
 
 /**
  * PlanetLib Class
@@ -59,35 +61,18 @@ class PlanetLib extends XGPCore
      * @param array   $data        The data as an array
      * @param boolean $full_insert Insert all the required tables
      *
-     * @return void
+     * @return int
      */
     public static function createPlanetWithOptions($data, $full_insert = true)
     {
-        if (is_array($data)) {
-            
-            $insert_query   = 'INSERT INTO ' . PLANETS . ' SET ';
-            
-            foreach ($data as $column => $value) {
-                $insert_query .= "`" . $column . "` = '" . $value . "', ";
-            }
-                
-            // Remove last comma
-            $insert_query   = substr_replace($insert_query, '', -2) . ';';
-            
-            parent::$db->query($insert_query);
-            
-            // insert extra required tables
-            if ($full_insert) {
-
-                // get the last inserted planet id
-                $planet_id  = parent::$db->insertId();
-                
-                // create the buildings, defenses and ships tables
-                self::createBuildings($planet_id);
-                self::createDefenses($planet_id);
-                self::createShips($planet_id);
-            }
+        $data["created_at"] = $data["updated_at"] = $data["planet_last_update"] = Carbon::now();
+        $thePlanetID = Capsule::table(PLANETS)->insertGetId($data);
+        if ($full_insert) {
+            self::createBuildings($thePlanetID);
+            self::createDefenses($thePlanetID);
+            self::createShips($thePlanetID);
         }
+        return $thePlanetID;
     }
     
     /**
@@ -104,33 +89,32 @@ class PlanetLib extends XGPCore
      */
     public function setNewPlanet($galaxy, $system, $position, $owner, $name = '', $main = false)
     {
-        $planet_exist   = parent::$db->queryFetch(
-            "SELECT `planet_id`
-            FROM " . PLANETS . "
-            WHERE `planet_galaxy` = '" . $galaxy . "' AND
-                `planet_system` = '" . $system . "' AND
-                `planet_planet` = '" . $position . "';"
-        );
-
-        if (!$planet_exist) {
+        $planet_exist = Capsule::table(PLANETS)
+            ->select('planet_id')
+            ->where([
+                ['planet_galaxy', '=', $galaxy],
+                ['planet_system', '=', $system],
+                ['planet_planet', '=', $position]
+            ]);
+        if (!$planet_exist->exists()) {
 
             $planet = $this->formula->getPlanetSize($position, $main);
             $temp   = $this->formula->setPlanetTemp($position);
             $name   = ($name == '') ? $this->langs['ge_colony'] : $name;
-            
+
             if ($main == true) {
                 $name   = $this->langs['ge_home_planet'];
             }
-            
-            $this->createPlanetWithOptions(
+
+            return $this->createPlanetWithOptions(
                 [
                     'planet_name' => $name,
                     'planet_user_id' => $owner,
                     'planet_galaxy' => $galaxy,
                     'planet_system' => $system,
                     'planet_planet' => $position,
-                    'planet_last_update' => time(),
                     'planet_type' => '1',
+                    'planet_last_update' => Carbon::now(),
                     'planet_image' => $this->formula->setPlanetImage($system, $position),
                     'planet_diameter' => $planet['planet_diameter'],
                     'planet_field_max' => $planet['planet_field_max'],
@@ -144,10 +128,8 @@ class PlanetLib extends XGPCore
                     'planet_deuterium_perhour' => FunctionsLib::readConfig('deuterium_basic_income')
                 ]
             );
-
-            return true;
         }
-        
+
         return false;
     }
     
@@ -203,7 +185,7 @@ class PlanetLib extends XGPCore
                     'planet_galaxy' => $galaxy,
                     'planet_system' => $system,
                     'planet_planet' => $position,
-                    'planet_last_update' => time(),
+                    'planet_last_update' => Carbon::now(),
                     'planet_type' => '3',
                     'planet_image' => 'mond',
                     'planet_diameter' => $size,
@@ -228,9 +210,7 @@ class PlanetLib extends XGPCore
      */
     public static function createBuildings($planet_id)
     {
-        parent::$db->query(
-            "INSERT INTO " . BUILDINGS . " SET `building_planet_id` = '".$planet_id."';"
-        );
+        Capsule::table(BUILDINGS)->insert(["building_planet_id" => $planet_id]);
     }
     
     /**
@@ -242,9 +222,7 @@ class PlanetLib extends XGPCore
      */
     public static function createDefenses($planet_id)
     {
-        parent::$db->query(
-            "INSERT INTO " . DEFENSES . " SET `defense_planet_id` = '".$planet_id."';"
-        );
+        Capsule::table(DEFENSES)->insert(["defense_planet_id" => $planet_id]);
     }
     
     /**
@@ -256,9 +234,7 @@ class PlanetLib extends XGPCore
      */
     public static function createShips($planet_id)
     {
-        parent::$db->query(
-            "INSERT INTO " . SHIPS . " SET `ship_planet_id` = '".$planet_id."';"
-        );
+        Capsule::table(SHIPS)->insert(["ship_planet_id" => $planet_id]);
     }
     
     /**

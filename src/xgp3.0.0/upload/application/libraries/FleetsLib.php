@@ -502,7 +502,7 @@ class FleetsLib extends XGPCore
      * @param string $Record       Record
      * @param string $current_user Current user
      *
-     * @return void
+     * @return string
      */
     public static function flyingFleetsTable($fleet_row, $Status, $Owner, $Label, $Record, $current_user)
     {

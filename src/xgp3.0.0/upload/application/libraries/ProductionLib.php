@@ -31,7 +31,7 @@ class ProductionLib
      *
      * @param int $storage_level Storage level
      *
-     * @return void
+     * @return int
      */
     public static function maxStorable($storage_level)
     {

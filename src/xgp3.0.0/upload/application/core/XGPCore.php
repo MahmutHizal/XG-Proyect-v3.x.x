@@ -17,7 +17,6 @@ namespace application\core;
 use application\libraries\TemplateLib;
 use application\libraries\UsersLib;
 use application\models;
-use Illuminate\Database\Capsule\Manager;
 
 /**
  * XGPCore Class
@@ -44,22 +43,10 @@ abstract class XGPCore
      */
     public function __construct()
     {
-        $this->setDbClass(); // DATABASE
         $this->setLangClass(); // LANGUAGE
         $this->setUsersClass(); // USERS
         $this->setObjectsClass(); // OBJECTS
         $this->setTemplateClass(); // TEMPLATE
-    }
-
-    /**
-     * setDbClass
-     *
-     * @return void
-     */
-    private function setDbClass()
-    {
-        //require_once XGP_ROOT. '/application/core/Database.php';
-        //self::$db   = Manager::connection();
     }
 
     /**
@@ -118,33 +105,38 @@ abstract class XGPCore
      */
     protected function loadModel($class)
     {
-        try {
-            
+        try
+        {
+
             // some validations
-            if ((string)$class && $class != '' && !is_null($class)) {
-                
-                $class_route    = strtolower(substr($class, 0, strrpos($class, '/')));
-                $class_name     = ucfirst(strtolower(substr($class, strrpos($class, '/') + 1, strlen($class))));
-                $model_file     = XGP_ROOT . MODELS_PATH . strtolower($class) . '.php';
+            if( (string)$class && $class != '' && !is_null($class) )
+            {
+
+                $class_route = strtolower(substr($class, 0, strrpos($class, '/')));
+                $class_name = ucfirst(strtolower(substr($class, strrpos($class, '/') + 1, strlen($class))));
+                $model_file = XGP_ROOT . MODELS_PATH . strtolower($class) . '.php';
 
                 // check if the file exists
-                if (file_exists($model_file)) {
+                if( file_exists($model_file) )
+                {
 
                     require_once $model_file;
-                    
-                    $class_route                    = strtr(MODELS_PATH . $class_route . '/' . $class_name, ['/' => '\\']);
+
+                    $class_route = strtr(MODELS_PATH . $class_route . '/' . $class_name, [ '/' => '\\' ]);
                     $this->{$class_name . '_Model'} = new $class_route(self::$db);
                     return;
                 }
             }
-            
+
             // not found
             throw new \Exception('Model not defined');
 
-        } catch (\Exception $e) {
+        }
+        catch (\Exception $e)
+        {
 
             die('Fatal error: ' . $e->getMessage());
-        } 
+        }
     }
 }
 

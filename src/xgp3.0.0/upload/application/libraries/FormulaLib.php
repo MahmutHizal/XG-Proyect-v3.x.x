@@ -83,7 +83,7 @@ class FormulaLib extends XGPCore
      * @param int     $position Position
      * @param boolean $main     Home world
      *
-     * @return void
+     * @return array
      */
     public function getPlanetSize($position, $main = false)
     {

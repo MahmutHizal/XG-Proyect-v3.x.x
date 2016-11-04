@@ -16,6 +16,10 @@ namespace application\controllers\home;
 
 use application\core\XGPCore;
 use application\libraries\FunctionsLib;
+use application\models\game\auth;
+use application\models\game\User;
+use Carbon\Carbon;
+use Illuminate\Database\Capsule\Manager;
 
 /**
  * Home Class
@@ -48,17 +52,6 @@ class Home extends XGPCore
 
         $this->buildPage();
     }
-
-    /**
-     * __destruct
-     *
-     * @return void
-     */
-    public function __destruct()
-    {
-        parent::$db->closeConnection();
-    }
-
     /**
      * buildPages
      *
@@ -69,41 +62,43 @@ class Home extends XGPCore
         $parse  = $this->langs;
 
         if ($_POST) {
+            $login = User::select([
+                "user_id",
+                "user_name",
+                "user_password",
+                "user_banned",
+                "user_home_planet_id"
+            ])
+                ->where(function($query) {
+                    $query->where('user_name', '=', $_POST["login"])
+                        ->orWhere('user_email', '=', $_POST["login"]);
+                })
+                ->where("user_password", '=', sha1($_POST["pass"]))
+                ->first();
+            if($login)
+            {
+                if($login->user_banned && $login->user_banned <= Carbon::now())
+                {
+                    $login->user_banned = NULL;
+                    Manager::table(BANNED)
+                        ->where('banned_who', '=', $login->user_name);
+                }
+                if(parent::$users->userLogin($login->user_id, $login->user_name, $login->user_password)) {
+                    $login->user_current_planet = $login->user_home_planet_id;
 
-            $login  = parent::$db->queryFetch(
-                "SELECT `user_id`, `user_name`, `user_password`, `user_banned`
-                FROM " . USERS . "
-                WHERE (`user_name` = '" . parent::$db->escapeValue($_POST['login']) . "'
-                    OR `user_email` = '" . parent::$db->escapeValue($_POST['login']) . "')
-                    AND `user_password` = '" . sha1($_POST['pass']) . "'
-                LIMIT 1"
-            );
+                    $login->save();
 
-            if ($login['user_banned'] <= time()) {
-                $this->removeBan($login['user_name']);
-            }
-
-            if ($login) {
-
-                // User login
-                if (parent::$users->userLogin($login['user_id'], $login['user_name'], $login['user_password'])) {
-
-                    // Update current planet
-                    parent::$db->query(
-                        "UPDATE " . USERS . " SET
-                        `user_current_planet` = `user_home_planet_id`
-                        WHERE `user_id` ='" . $login['user_id'] . "'"
-                    );
-
-                    // Redirect to game
                     FunctionsLib::redirect('game.php?page=overview');
                 }
             }
+            else
+            {
+                // If login fails
+                FunctionsLib::redirect('index.php');
+            }
 
-            // If login fails
-            FunctionsLib::redirect('index.php');
         } else {
-            $parse['year']          = date('Y');
+            $parse['year']          = Carbon::now()->year;
             $parse['version']       = SYSTEM_VERSION;
             $parse['servername']    = strtr($this->langs['hm_title'], ['%s' => FunctionsLib::readConfig('game_name')]);
             $parse['game_logo']     = FunctionsLib::readConfig('game_logo');
@@ -120,27 +115,6 @@ class Home extends XGPCore
                 false
             );
         }
-    }
-
-    /**
-     * removeBan
-     *
-     * @param string $user_name User name
-     *
-     * @return void
-     */
-    private function removeBan($user_name)
-    {
-        parent::$db->query(
-            "UPDATE " . USERS . " SET
-            `user_banned` = '0'
-            WHERE `user_name` = '" . $user_name . "' LIMIT 1;"
-        );
-
-        parent::$db->query(
-            "DELETE FROM " . BANNED . "
-            WHERE `banned_who` = '" . $user_name . "'"
-        );
     }
 }
 

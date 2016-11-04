@@ -11,11 +11,18 @@
  * @link     http://www.xgproyect.org
  * @version  3.0.0
  */
-
-require_once XGP_ROOT . 'application/core/constants.php';
 require_once XGP_ROOT . 'vendor/autoload.php';
+require_once XGP_ROOT . 'application/core/constants.php';
+$models = include_once XGP_ROOT . 'application/config/models.php';
 use Illuminate\Database\Capsule;
-//use application\core\Database;
+use Illuminate\Events\Dispatcher;
+use Illuminate\Container\Container;
+foreach ($models as $model)
+{
+    include_once XGP_ROOT . 'application/models/game/' . $model . '.php';
+}
+unset($models, $model);
+
 use application\core\Hooks;
 use application\core\Sessions;
 use application\libraries\FunctionsLib;
@@ -29,31 +36,25 @@ if (file_exists($config_file)) {
 
     require $config_file;
     $installed  = true;
+    $capsule = new Capsule\Manager();
+    $capsule->addConnection([
+        'driver'    => 'mysql',
+        'host'      => DB_HOST,
+        'database'  => DB_NAME,
+        'username'  => DB_USER,
+        'password'  => DB_PASS,
+        'charset'   => 'utf8',
+        'collation' => 'utf8_unicode_ci',
+        'prefix'    => DB_PREFIX,
+    ]);
+    $capsule->getConnection()->enableQueryLog();
+    $capsule->setEventDispatcher(new Dispatcher(new Container));
+    $capsule->setAsGlobal();
+    $capsule->bootEloquent();
 }
-else {
-    define('DB_HOST', null);
-    define('DB_NAME', null);
-    define('DB_USER', null);
-    define('DB_PASS', null);
-}
-$capsule = new Capsule\Manager();
-$capsule->addConnection([
-    'driver'    => 'mysql',
-    'host'      => DB_HOST,
-    'database'  => DB_NAME,
-    'username'  => DB_USER,
-    'password'  => DB_PASS,
-    'charset'   => 'utf8',
-    'collation' => 'utf8_unicode_ci',
-    'prefix'    => DB_PREFIX,
-]);
-$capsule->setAsGlobal();
-
-//require_once XGP_ROOT . CORE_PATH . 'Database.php';
 
 require_once XGP_ROOT . CORE_PATH . 'XGPCore.php';
 require_once XGP_ROOT . CORE_PATH . 'Options.php';
-require_once XGP_ROOT . CORE_PATH . 'Xml.php';
 require_once XGP_ROOT . LIB_PATH . 'FormatLib.php';
 require_once XGP_ROOT . LIB_PATH . 'OfficiersLib.php';
 require_once XGP_ROOT . LIB_PATH . 'ProductionLib.php';

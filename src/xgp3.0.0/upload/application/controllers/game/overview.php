@@ -20,6 +20,8 @@ use application\libraries\FleetsLib;
 use application\libraries\FormatLib;
 use application\libraries\FunctionsLib;
 use application\libraries\UpdateLib;
+use Carbon\Carbon;
+use Illuminate\Database\Capsule\Manager;
 
 /**
  * Overview Class
@@ -51,7 +53,7 @@ class Overview extends XGPCore
         parent::$users->checkSession();
 
         // load Model
-        parent::loadModel('game/overview');
+        //parent::loadModel('game/overview');
         
         // Check module access
         FunctionsLib::moduleMessage(FunctionsLib::isModuleAccesible(self::MODULE_ID));
@@ -100,7 +102,7 @@ class Overview extends XGPCore
         // SHOW ALL THE INFORMATION, IN ORDER, ACCORDING TO THE TEMPLATE
         $parse['planet_name'] = $this->_current_planet['planet_name'];
         $parse['user_name'] = $this->_current_user['user_name'];
-        $parse['date_time'] = date(FunctionsLib::readConfig('date_format_extended'), time());
+        $parse['date_time'] = Carbon::now()->format(FunctionsLib::readConfig('date_format_extended'));
         $parse['Have_new_message'] = $block['messages'];
         $parse['fleet_list'] = $block['fleet_movements'];
         $parse['planet_image'] = $this->_current_planet['planet_image'];
@@ -132,6 +134,8 @@ class Overview extends XGPCore
     {
         // THE PLANET IS "FREE" BY DEFAULT
         $building_block = $this->_lang['ov_free'];
+        if(is_object($user_planet))
+            $user_planet = get_object_vars($user_planet);
 
         if (!$is_current_planet) {
             // UPDATE THE PLANET INFORMATION FIRST, MAY BE SOMETHING HAS JUST FINISHED
@@ -202,133 +206,120 @@ class Overview extends XGPCore
      */
     private function get_fleet_movements()
     {
-        $fleet = '';
-        $fleet_row = '';
+        $fleet_row = [];
         $record = 0;
 
-        $own_fleets = $this->Overview_Model->getOwnFleets($this->_current_user['user_id']);
-        
-        while ($fleets = parent::$db->fetchArray($own_fleets)) {
+        $own_fleets = Manager::table(FLEETS)
+            ->where('fleet_owner', '=', $this->_current_user['user_id'])
+            ->orWhere('fleet_target_owner', '=', $this->_current_user['user_id'])
+            ->get();
+        if (is_null($own_fleets))
+            return;
+        else
+        {
+            foreach($own_fleets as $SingleFleet)
+            {
+                $StartTime = (is_int ($SingleFleet->fleet_start_time)
+                    ? Carbon::createFromTimestamp ($SingleFleet->fleet_start_time)
+                    : Carbon::parse ($SingleFleet->fleet_start_time));
 
-            ######################################
-            #
-            # own fleets
-            #
-            ######################################
+                $StayTime = (is_int ($SingleFleet->fleet_end_stay)
+                    ? Carbon::createFromTimestamp ($SingleFleet->fleet_end_stay)
+                    : Carbon::parse ($SingleFleet->fleet_end_stay));
 
-            $start_time = $fleets['fleet_start_time'];
-            $stay_time = $fleets['fleet_end_stay'];
-            $end_time = $fleets['fleet_end_time'];
+                $EndTime = (is_int ($SingleFleet->fleet_end_time)
+                    ? Carbon::createFromTimestamp ($SingleFleet->fleet_end_time)
+                    : Carbon::parse ($SingleFleet->fleet_end_time));
 
-            $target_galaxy = $fleets['fleet_end_galaxy'];
-            $target_system = $fleets['fleet_end_system'];
-            $target_planet = $fleets['fleet_end_planet'];
-            $fleet_status = $fleets['fleet_mess'];
-            $fleet_group = $fleets['fleet_group'];
-            $id = $fleets['fleet_id'];
+                $FleetStatus    = $SingleFleet->fleet_group;
+                $FleetGroup     = $SingleFleet->fleet_group;
 
-            if ($fleets['fleet_owner'] == $this->_current_user['user_id']) {
+                $theID          = $SingleFleet->fleet_id;
 
-                $record++;
-
-                $label = 'fs';
-
-                if ($start_time > time()) {
-
-                    $fleet_row[$start_time . $id] = FleetsLib::flyingFleetsTable($fleets, 0, true, $label, $record, $this->_current_user);
-                }
-
-                if (( $fleets['fleet_mission'] != 4 ) && ( $fleets['fleet_mission'] != 10 )) {
-                    $label = 'ft';
-
-                    if ($stay_time > time()) {
-                        $fleet_row[$stay_time . $id] = FleetsLib::flyingFleetsTable($fleets, 1, true, $label, $record, $this->_current_user);
-                    }
-
-                    $label = 'fe';
-
-                    if ($end_time > time()) {
-                        $fleet_row[$end_time . $id] = FleetsLib::flyingFleetsTable($fleets, 2, true, $label, $record, $this->_current_user);
-                    }
-                }
-
-                if ($fleets['fleet_mission'] == 4 && $start_time < time() && $end_time > time()) {
-                    $fleet_row[$end_time . $id] = FleetsLib::flyingFleetsTable($fleets, 2, true, 'none', $record, $this->_current_user);
-                }
-            }
-
-            ######################################
-            #
-            # incoming fleets
-            #
-            ######################################
-            if ($fleets['fleet_owner'] != $this->_current_user['user_id']) {
-
-                if ($fleets['fleet_mission'] == 2) {
-
+                if($SingleFleet->fleet_owner == $this->_current_user['user_id'])
+                {
                     $record++;
-                    $start_time = ($fleet_status > 0) ? '' : $fleets['fleet_start_time'];
+                    $label = 'fs';
 
-                    if ($start_time > time()) {
+                    if($StartTime > Carbon::now())
+                        $fleet_row[$StartTime->timestamp . $theID] = FleetsLib::flyingFleetsTable($SingleFleet, 0, true, $label, $record, $this->_current_user);
 
-                        $fleet_row[$start_time . $id] = FleetsLib::flyingFleetsTable(
-                                        $fleets, 0, false, 'ofs', $record, $this->_current_user
-                        );
+                    if(($SingleFleet->fleet_mission != 4) && ($SingleFleet->fleet_mission != 10))
+                    {
+                        $label = 'ft';
+                        if($StayTime > Carbon::now())
+                            $fleet_row[$StayTime->timestamp . $theID] = FleetsLib::flyingFleetsTable($SingleFleet, 1, true, $label, $record, $this->_current_user);
+
+                        $label= 'fe';
+                        if($EndTime > Carbon::now())
+                            $fleet_row[$EndTime->timestamp . $theID] = FleetsLib::flyingFleetsTable($SingleFleet, 2, true, $label, $record, $this->_current_user);
+
+                    }
+
+                    if($SingleFleet->fleet_mission == 4 && $StartTime < Carbon::now() && $EndTime > Carbon::now())
+                    {
+                        $fleet_row[$EndTime->timestamp . $theID] = FleetsLib::flyingFleetsTable($SingleFleet, 2, true, 'none', $record, $this->_current_user);
                     }
                 }
 
-                if (( $fleets['fleet_mission'] == 1 ) && ( $fleet_group > 0 )) {
-                    $record++;
+                if($SingleFleet->fleet_owner != $this->_current_user['user_id'])
+                {
+                    if ($SingleFleet->fleet_mission == 2)
+                    {
+                        $record++;
+                        $StartTime = ($FleetStatus
+                                      > 0 ? NULL : (is_int (
+                            $SingleFleet->fleet_start_time
+                        ) ? Carbon::createFromTimestamp ($SingleFleet->fleet_start_time) : Carbon::parse (
+                            $SingleFleet->fleet_start_time
+                        )));
 
-                    if ($fleet_status > 0) {
-                        $start_time = '';
-                    } else {
-                        $start_time = $fleets['fleet_start_time'];
+                        if (!is_null($StartTime) && $StartTime > Carbon::now())
+                        {
+                            $fleet_row[$EndTime->timestamp . $theID] = FleetsLib::flyingFleetsTable($SingleFleet, 0, false, 'ofs', $record, $this->_current_user);
+                        }
                     }
 
-                    if ($start_time > time()) {
-                        $fleet_row[$start_time . $id] = FleetsLib::flyingFleetsTable($fleets, 0, false, 'ofs', $record, $this->_current_user);
+                    if(($SingleFleet->fleet_mission == 1) && ($FleetGroup > 0))
+                    {
+                        $record++;
+                        $StartTime = ($FleetStatus
+                                      > 0 ? NULL : (is_int (
+                            $SingleFleet->fleet_start_time
+                        ) ? Carbon::createFromTimestamp ($SingleFleet->fleet_start_time) : Carbon::parse (
+                            $SingleFleet->fleet_start_time
+                        )));
+
+                        if (!is_null($StartTime) && $StartTime > Carbon::now())
+                        {
+                            $fleet_row[$EndTime->timestamp . $theID] = FleetsLib::flyingFleetsTable($SingleFleet, 0, false, 'ofs', $record, $this->_current_user);
+                        }
                     }
-                }
-            }
 
-            ######################################
-            #
-                    # other fleets
-            #
-                    ######################################
+                    if ($SingleFleet->fleet_mission != 8)
+                    {
+                        $record++;
+                        $StartTime = (is_int ($SingleFleet->fleet_start_time)
+                            ? Carbon::createFromTimestamp ($SingleFleet->fleet_start_time)
+                            : Carbon::parse ($SingleFleet->fleet_start_time));
+                        $StayTime = (is_int ($SingleFleet->fleet_end_stay)
+                            ? Carbon::createFromTimestamp ($SingleFleet->fleet_end_stay)
+                            : Carbon::parse ($SingleFleet->fleet_end_stay));
+                        $theID          = $SingleFleet->fleet_id;
 
-            if ($fleets['fleet_owner'] != $this->_current_user['user_id']) {
-                if ($fleets['fleet_mission'] != 8) {
-                    $record++;
+                        if($StartTime > Carbon::now())
+                            $fleet_row[$EndTime->timestamp . $theID] = FleetsLib::flyingFleetsTable($SingleFleet, 0, false, 'ofs', $record, $this->_current_user);
 
-                    $start_time = $fleets['fleet_start_time'];
-                    $stay_time = $fleets['fleet_end_stay'];
-                    $id = $fleets['fleet_id'];
-
-                    if ($start_time > time()) {
-                        $fleet_row[$start_time . $id] = FleetsLib::flyingFleetsTable($fleets, 0, false, 'ofs', $record, $this->_current_user);
-                    }
-                    if ($fleets['fleet_mission'] == 5) {
-                        if ($stay_time > time()) {
-                            $fleet_row[$stay_time . $id] = FleetsLib::flyingFleetsTable($fleets, 1, false, 'oft', $record, $this->_current_user);
+                        if ($SingleFleet->fleet_mission == 5)
+                        {
+                            if($StayTime > Carbon::now())
+                                $fleet_row[$EndTime->timestamp . $theID] = FleetsLib::flyingFleetsTable($SingleFleet, 1, false, 'oft', $record, $this->_current_user);
                         }
                     }
                 }
             }
+            return implode(PHP_EOL, ksort($fleet_row));
         }
-
-        $this->Overview_Model->clearResults($own_fleets);
-
-        if (count($fleet_row) > 0 && $fleet_row != '') {
-            ksort($fleet_row);
-
-            foreach ($fleet_row as $time => $content) {
-                $fleet .= $content . "\n";
-            }
-        }
-
-        return $fleet;
     }
 
     /**
@@ -338,19 +329,32 @@ class Overview extends XGPCore
      */
     private function get_planet_moon()
     {
-        $return['moon_img'] = '';
-        $return['moon'] = '';
+        $return = [
+            "moon_img" => '',
+            "moon" => ''
+        ];
 
-        if ($this->_current_planet['moon_id'] != 0 && $this->_current_planet['moon_destroyed'] == 0 && $this->_current_planet['planet_type'] == 1) {
-            $moon_name = $this->_current_planet['moon_name'] . " (" . $this->_lang['fcm_moon'] . ")";
-            $url = 'game.php?page=overview&cp=' . $this->_current_planet['moon_id'] . '&re=0';
-            $image = DPATH . 'planets/' . $this->_current_planet['moon_image'] . '.jpg';
-            $attributes = 'height="50" width="50"';
+        if($this->_current_planet['moon_id'] != 0 &&
+           $this->_current_planet['moon_destroyed'] == 0 &&
+           $this->_current_planet['planet_type'] == 1)
+        {
+            $url = http_build_query([
+                "page" => "overview",
+                "cp" => $this->_current_planet['moon_id'],
+                "re" => 0
+                                    ]);
+            $image = DPATH . 'planets' . DIRECTORY_SEPARATOR
+                     . $this->_current_planet['moon_image'] . '.jpg';
 
-            $return['moon_img'] = FunctionsLib::setUrl($url, $moon_name, FunctionsLib::setImage($image, $moon_name, $attributes));
-            $return['moon'] = $moon_name;
+            $MoonName = $this->_current_planet['moon_name'] . " (" . $this->_lang['fcm_moon'] . ")";
+
+            $return['moon_img'] = FunctionsLib::setUrl(
+                $url,
+                $MoonName,
+                FunctionsLib::setImage($image, $MoonName, ["width" => 50, "height" => 50])
+            );
+            $return['moon'] = $MoonName;
         }
-
         return $return;
     }
 
@@ -362,37 +366,55 @@ class Overview extends XGPCore
     private function get_planets()
     {
         $colony = 1;
-        
-        $planets_query  = $this->Overview_Model->getPlanets($this->_current_user['user_id']);
-        $planet_block   = '<tr>';
 
-        while ($user_planet = parent::$db->fetchArray($planets_query)) {
-            if ($user_planet['planet_id'] != $this->_current_user['user_current_planet'] && $user_planet['planet_type'] != 3) {
-                $url = 'game.php?page=overview&cp=' . $user_planet['planet_id'] . '&re=0';
-                $image = DPATH . 'planets/small/s_' . $user_planet['planet_image'] . '.jpg';
-                $attributes = 'height="50" width="50"';
+        $planets_query = Manager::table(PLANETS)
+            ->join(BUILDINGS, BUILDINGS . '.building_planet_id', '=', PLANETS . '.planet_id')
+            ->join(DEFENSES, DEFENSES . '.defense_planet_id', '=', PLANETS . '.planet_id')
+            ->join(SHIPS, SHIPS . '.ship_planet_id', '=', PLANETS . '.planet_id')
+            ->where("planet_user_id", '=', $this->_current_user["user_id"])
+            ->whereNull("planet_destroyed")
+            ->get();
 
-                $planet_block .= '<th>' . $user_planet['planet_name'] . '<br>';
-                $planet_block .= FunctionsLib::setUrl($url, $user_planet['planet_name'], FunctionsLib::setImage($image, $user_planet['planet_name'], $attributes));
-                $planet_block .= '<center>';
-                $planet_block .= $this->get_current_work($user_planet, false);
-                $planet_block .= '</center></th>';
+        if(!is_null($planets_query))
+        {
+            $planet_block   = '<tr>';
+            foreach ($planets_query as $thePlanet) {
+                if($thePlanet->planet_id != $this->_current_user['user_current_planet'] && $thePlanet->planet_type != 3)
+                {
+                    $url = http_build_query([
+                        "page" => "overview",
+                        "cp" => $thePlanet->planet_id,
+                        "re" => "0"
+                                            ]);
+                    $image = DPATH . 'planets' . DIRECTORY_SEPARATOR
+                        . 'small' . DIRECTORY_SEPARATOR . 's_' . $thePlanet->planet_image . '.jpg';
 
-                if ($colony <= 1) {
-                    $colony++;
-                } else {
-                    $planet_block .= '</tr><tr>';
-                    $colony = 1;
+                    $planet_block .= '<th>';
+                    $planet_block .= $thePlanet->planet_name;
+                    $planet_block .= '<br />';
+                    $planet_block .= FunctionsLib::setUrl(
+                      "game.php?" . $url,
+                      $thePlanet->planet_name,
+                      FunctionsLib::setImage($image, $thePlanet->planet_name, ["width" => 50, "height" => 50])
+                    );
+                    $planet_block .= $this->get_current_work($thePlanet, false);
+                    $planet_block .= '</th>';
+
+                    if ($colony <= 1)
+                        $colony++;
+                    else
+                    {
+                        $planet_block .= '</tr><tr>';
+                        $colony = 1;
+                    }
                 }
             }
+            $planet_block .= '</tr>';
+
+            return $planet_block;
         }
-
-        $planet_block .= '</tr>';
-
-        // CLEAN SOME MEMORY
-        $this->Overview_Model->clearResults($planets_query);
-
-        return $planet_block;
+        else
+            return false;
     }
 
     /**

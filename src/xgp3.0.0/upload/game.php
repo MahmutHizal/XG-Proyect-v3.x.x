@@ -43,6 +43,7 @@ if (isset($page)) {
     // logout
     if ($page == 'logout') {
         $session->delete();
+
         FunctionsLib::redirect(XGP_ROOT);
     }
     

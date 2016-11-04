@@ -15,6 +15,7 @@
 namespace application\libraries;
 
 use application\core\XGPCore;
+use Carbon\Carbon;
 use Illuminate\Database\Capsule\Manager as Capsule;
 
 /**
@@ -72,7 +73,7 @@ class UsersLib extends XGPCore
      * @param string $user_name User name
      * @param string $password  Password
      *
-     * @return void
+     * @return boolean
      */
     public function userLogin($user_id = 0, $user_name = '', $password = '')
     {
@@ -81,12 +82,12 @@ class UsersLib extends XGPCore
             $_SESSION['user_id']        = $user_id;
             $_SESSION['user_name']      = $user_name;
             $_SESSION['user_password']  = sha1($password . '-' . SECRETWORD);
-
             return true;
         } else {
 
             return false;
         }
+
     }
 
     /**
@@ -131,89 +132,99 @@ class UsersLib extends XGPCore
      */
     public function deleteUser($user_id)
     {
-        $user_data  = parent::$db->queryFetch(
-            "SELECT `user_ally_id` FROM " . USERS . " WHERE `user_id` = '" . $user_id . "';"
-        );
+        $user_data = Capsule::table(USERS)
+            ->select([
+                "user_ally_id"
+            ])
+            ->where('user_id', '=', $user_id)
+            ->first();
+        if ($user_data && $user_data->user_ally_id != 0) {
+            $theAlliance = Capsule::table(ALLIANCE)
+                ->select([
+                    ALLIANCE . ".alliance_id",
+                    ALLIANCE . ".alliance_ranks",
+                    Capsule::connection()->raw("(" .
+                        Capsule::table(USERS)
+                            ->select([
+                                Capsule::connection()->raw("COUNT(user_id) AS `ally_members`")
+                            ])->toSql()
+                        ."WHERE `user_ally_id` = '" . $user_data['user_ally_id'] . ") AS `ally_members`")
+                ])
+                ->where(ALLIANCE . ".alliance_id", "=", $user_data['user_ally_id'])
+                ->first();
+            if ( $theAlliance->ally_members > 1
+                && ( isset( $theAlliance->alliance_ranks )
+                    && !is_null ( $theAlliance->alliance_ranks ) ) ) {
+                $ranks = unserialize($theAlliance->alliance_ranks);
+                $userRank = NULL;
 
-        if ($user_data['user_ally_id'] != 0) {
-
-            $alliance = parent::$db->queryFetch(
-                "SELECT a.`alliance_id`, a.`alliance_ranks`,
-                    (SELECT COUNT(user_id) AS `ally_members` 
-                        FROM `" . USERS . "` 
-                        WHERE `user_ally_id` = '" . $user_data['user_ally_id'] . "') AS `ally_members`
-                FROM " . ALLIANCE . " AS a
-                WHERE a.`alliance_id` = '" . $user_data['user_ally_id'] . "';"
-            );
-
-            if ($alliance['ally_members'] > 1 
-                && (isset($alliance['alliance_ranks']) && !is_null($alliance['alliance_ranks']))) {
-                
-                $ranks      = unserialize($alliance['alliance_ranks']);
-                $userRank   = null;
-                
-                // search for an user that has permission to receive the alliance.
                 foreach ($ranks as $id => $rank) {
-
-                    if ($rank['rechtehand'] == 1) {
-
-                        $userRank   = $id;
+                    if ($rank["rechtehand"] == 1) {
+                        $userRank = $id;
                         break;
                     }
                 }
-                
-                // check and update
                 if (is_numeric($userRank)) {
-                    parent::$db->query(
-                        "UPDATE `" . ALLIANCE . "` SET 
-                            `alliance_owner` = 
-                            (
-                                    SELECT `user_id` 
-                                FROM `" . USERS . "`
-                                WHERE `user_ally_rank_id` = '" . $userRank . "'
-                                    AND `user_ally_id` = '" . $alliance['alliance_id'] . "'
-                                LIMIT 1
-                            )
-                        WHERE `alliance_id` = '" . $alliance['alliance_id'] . "';"
-                    );
-                } else {
 
-                    $this->deleteAlliance($alliance['alliance_id']);
+                    Capsule::table(ALLIANCE)
+                        ->where(ALLIANCE . '.alliance_id', '=', $theAlliance->alliance_id)
+                        ->update([
+                            "alliance_owner" => Capsule::connection()->raw("(" .
+                                Capsule::table(USERS)
+                                    ->select([ "user_id" ])
+                                    ->toSql() . "WHERE `user_ally_rank_id` = '" . $userRank . "' AND `user_ally_id` = '" . $theAlliance->alliance_id . "' LIMIT 1" .
+                                ")")
+                        ]);
+
+                } else {
+                    $this->deleteAlliance($theAlliance->alliance_id);
                 }
             } else {
-
-                $this->deleteAlliance($alliance['alliance_id']);
+                $this->deleteAlliance($theAlliance->alliance_id);
             }
         }
 
-        parent::$db->query(
-            "DELETE p,b,d,s FROM " . PLANETS . " AS p
-            INNER JOIN " . BUILDINGS . " AS b ON b.building_planet_id = p.`planet_id`
-            INNER JOIN " . DEFENSES . " AS d ON d.defense_planet_id = p.`planet_id`
-            INNER JOIN " . SHIPS . " AS s ON s.ship_planet_id = p.`planet_id`
-            WHERE `planet_user_id` = '" . $user_id . "';"
-        );
+        Capsule::table(PLANETS)
+            ->select([
+                PLANETS . ".*",
+                BUILDINGS . ".*",
+                DEFENSES . ".*",
+                SHIPS . ".*"
+            ])
+            ->where(PLANETS . '.planet_user_id', '=', $user_id)
+            ->join(BUILDINGS, BUILDINGS . '.building_planet_id', '=', PLANETS . '.planet_id')
+            ->join(DEFENSES, DEFENSES . '.defense_planet_id', '=', PLANETS . '.planet_id')
+            ->join(SHIPS, SHIPS . '.ship_planet_id', '=', PLANETS . '.planet_id')
+            ->delete();
 
-        parent::$db->query(
-            "DELETE FROM " . MESSAGES . " 
-                WHERE `message_sender` = '" . $user_id . "' OR `message_receiver` = '" . $user_id . "';"
-        );
+        Capsule::table(MESSAGES)
+            ->where('message_sender', '=', $user_id)
+            ->orWhere('message_receiver', '=', $user_id)
+            ->delete();
 
-        parent::$db->query(
-            "DELETE FROM " . BUDDY . " 
-                WHERE `buddy_sender` = '" . $user_id . "' OR `buddy_receiver` = '" . $user_id . "';"
-        );
+        Capsule::table(BUDDY)
+            ->where('buddy_sender', '=', $user_id)
+            ->orWhere('buddy_receiver', '=', $user_id)
+            ->delete();
 
-        parent::$db->query(
-            "DELETE r,f,n,p,se,s,u FROM " . USERS . " AS u
-            INNER JOIN " . RESEARCH . " AS r ON r.research_user_id = u.user_id
-            LEFT JOIN " . FLEETS . " AS f ON f.fleet_owner = u.user_id
-            LEFT JOIN " . NOTES . " AS n ON n.note_owner = u.user_id
-            INNER JOIN " . PREMIUM . " AS p ON p.premium_user_id = u.user_id
-            INNER JOIN " . SETTINGS . " AS se ON se.setting_user_id = u.user_id
-            INNER JOIN " . USERS_STATISTICS . " AS s ON s.user_statistic_user_id = u.user_id
-            WHERE u.`user_id` = '" . $user_id . "';"
-        );
+        Capsule::table(USERS)
+            ->select([
+                USERS . ".*",
+                RESEARCH . ".*",
+                FLEETS . ".*",
+                NOTES . ".*",
+                PREMIUM . ".*",
+                SETTINGS . ".*",
+                USERS_STATISTICS . ".*"
+            ])
+            ->where(USERS . ".user_id", '=', $user_id)
+            ->join(RESEARCH, RESEARCH . '.research_user_id', '=', USERS . '.user_id')
+            ->join(PREMIUM, PREMIUM . '.premium_user_id', '=', USERS . '.user_id')
+            ->join(SETTINGS, SETTINGS . 'setting_user_id', '=', USERS . '.user_id')
+            ->join(USERS_STATISTICS, USERS_STATISTICS . '.user_statistic_user_id', '=', USERS . '.user_id')
+            ->leftJoin(FLEETS, FLEETS . '.fleet_owner', '=', USERS . '.user_id')
+            ->leftJoin(NOTES, NOTES . '.note_owner', '=', USERS . '.user_id')
+            ->delete();
     }
 
     /**
@@ -225,21 +236,20 @@ class UsersLib extends XGPCore
      */
     private function deleteAlliance($alliance_id)
     {
-        parent::$db->query(
-            "DELETE ass, a FROM " . ALLIANCE . " AS a
-            INNER JOIN " . ALLIANCE_STATISTICS . " AS ass ON ass.alliance_statistic_alliance_id = a.alliance_id
-            WHERE a.`alliance_id` = '" . $alliance_id . "';"
-        );
+        Capsule::table(ALLIANCE)
+            ->join(ALLIANCE_STATISTICS, ALLIANCE_STATISTICS . '.alliance_statistic_alliance_id', '=', ALLIANCE . '.alliance_id')
+            ->where('alliance_id', '=', $alliance_id)
+            ->delete();
 
-        parent::$db->query(
-            "UPDATE `" . USERS . "` SET 
-                `user_ally_id` = '0',
-                `user_ally_request` = '0',
-                `user_ally_request_text` = '',
-                `user_ally_register_time` = '',
-                `user_ally_rank_id` = '0'
-            WHERE `user_ally_id` = '" . $alliance_id . "';"
-        );
+        Capsule::table(USERS)
+            ->where('user_ally_id', '=', $alliance_id)
+            ->update([
+                "user_ally_id" => 0,
+                "user_ally_request" => 0,
+                "user_ally_request_text" => "",
+                "user_ally_register_time" => "",
+                "user_ally_rank_id" => 0
+            ]);
     }
     
     /**
@@ -289,7 +299,7 @@ class UsersLib extends XGPCore
      */
     private function setUserData()
     {
-        $user_row   = array();
+        $user_row   = [];
 
         $this->user_data = Capsule::table(USERS)
             ->select([
@@ -331,7 +341,7 @@ class UsersLib extends XGPCore
             FunctionsLib::message($this->langs['css_different_password'], XGP_ROOT, 5, false, false);
         }
 
-        if ($user_row['user_banned'] > 0) {
+        if ($user_row['user_banned'] >= Carbon::now()) {
 
             $parse                  = $this->langs;
             $parse['banned_until']  = date(FunctionsLib::readConfig('date_format_extended'), $user_row['user_banned']);
@@ -342,12 +352,12 @@ class UsersLib extends XGPCore
         Capsule::table(USERS)
             ->where('user_id', '=', $_SESSION["user_id"])
             ->update([
-                         'user_onlinetime' => Carbon::now(),
-                         'updated_at' => Carbon::now(),
-                         'user_current_page' => $_SERVER['REQUEST_URI'],
-                         'user_lastip' => $_SERVER['REMOTE_ADDR'],
-                         'user_agent' => $_SERVER['HTTP_USER_AGENT']
-                     ]);
+                'user_onlinetime' => Carbon::now(),
+                'updated_at' => Carbon::now(),
+                'user_current_page' => $_SERVER['REQUEST_URI'],
+                'user_lastip' => $_SERVER['REMOTE_ADDR'],
+                'user_agent' => $_SERVER['HTTP_USER_AGENT']
+             ]);
 
         // pass the data
         $this->user_data = $user_row;
@@ -363,29 +373,38 @@ class UsersLib extends XGPCore
      */
     private function setPlanetData()
     {
-        $this->planet_data = parent::$db->queryFetch(
-            "SELECT p.*, b.*, d.*, s.*,
-            m.planet_id AS moon_id,
-            m.planet_name AS moon_name,
-            m.planet_image AS moon_image,
-            m.planet_destroyed AS moon_destroyed,
-            m.planet_image AS moon_image,
-            (SELECT COUNT(user_statistic_user_id) AS stats_users 
-                FROM `" . USERS_STATISTICS . "` AS s
-                INNER JOIN " . USERS . " AS u ON u.user_id = s.user_statistic_user_id
-                WHERE u.`user_authlevel` <= " . FunctionsLib::readConfig('stat_admin_level') . ") AS stats_users
-            FROM " . PLANETS . " AS p
-            INNER JOIN " . BUILDINGS . " AS b ON b.building_planet_id = p.`planet_id`
-            INNER JOIN " . DEFENSES . " AS d ON d.defense_planet_id = p.`planet_id`
-            INNER JOIN " . SHIPS . " AS s ON s.ship_planet_id = p.`planet_id`
-            LEFT JOIN " . PLANETS . " AS m ON m.planet_id = (SELECT mp.`planet_id`
-                FROM " . PLANETS . " AS mp
-                WHERE (mp.planet_galaxy=p.planet_galaxy AND
-                                mp.planet_system=p.planet_system AND
-                                mp.planet_planet=p.planet_planet AND
-                                mp.planet_type=3))
-            WHERE p.`planet_id` = '" . $this->user_data['user_current_planet'] . "';"
-        );
+        $this->planet_data = Capsule::table(PLANETS)
+            ->select([
+                PLANETS . ".*",
+                BUILDINGS . ".*",
+                DEFENSES . ".*",
+                SHIPS . ".*",
+                Capsule::connection()->raw("xgp_m.planet_id AS moon_id"),
+                Capsule::connection()->raw("xgp_m.planet_name AS moon_name"),
+                Capsule::connection()->raw("xgp_m.planet_image AS moon_image"),
+                Capsule::connection()->raw("xgp_m.planet_destroyed AS moon_destroyed"),
+                Capsule::connection()->raw("(" .
+                    Capsule::table(USERS_STATISTICS)
+                        ->select(Capsule::connection()->raw('COUNT(user_statistic_user_id) AS stats_users'))
+                        ->join(USERS, 'user_id', '=', 'user_statistic_user_id')->toSql()
+                    ." WHERE `user_authlevel` <= " . FunctionsLib::readConfig('stat_admin_level') . ") AS stats_users"
+                )
+            ])
+            ->join(BUILDINGS, 'building_planet_id', '=', 'planet_id')
+            ->join(DEFENSES, 'defense_planet_id', '=', 'planet_id')
+            ->join(SHIPS, 'ship_planet_id', '=', 'planet_id')
+            ->leftJoin("" . Capsule::connection()->raw(PLANETS ." AS m"), function($join) {
+                $join->on('m.planet_id', '=', Capsule::connection()->raw("(".
+                    Capsule::table(PLANETS)->select('planet_id')->toSql().
+                    "WHERE (planet_galaxy=planet_galaxy AND
+                                planet_system=planet_system AND
+                                planet_planet=planet_planet AND
+                                planet_type=3))"
+                ));
+            })
+            ->where(PLANETS.".planet_id", '=', $this->user_data['user_current_planet']);
+
+        $this->planet_data = get_object_vars($this->planet_data->first());
     }
 
     /**
@@ -399,23 +418,19 @@ class UsersLib extends XGPCore
         $restore    = isset($_GET['re']) ? (int)$_GET['re'] : '';
 
         if (isset($select) && is_numeric($select) && isset($restore) && $restore == 0 && $select != 0) {
-
-            $owned = parent::$db->queryFetch(
-                "SELECT `planet_id`
-                FROM " . PLANETS . "
-                WHERE `planet_id` = '" . $select . "'
-                AND `planet_user_id` = '" . $this->user_data['user_id'] . "';"
-            );
+            $owned = (bool)Capsule::table(PLANETS)
+                ->where('planet_id', '=', $select)
+                ->where('planet_user_id', '=', $this->user_data['user_id'])
+                ->first();
 
             if ($owned) {
 
-                $this->user_data['current_planet'] = $select;
-
-                parent::$db->query(
-                    "UPDATE " . USERS . " SET
-                    `user_current_planet` = '" . $select . "'
-                    WHERE `user_id` = '" . $this->user_data['user_id'] . "';"
-                );
+                $this->user_data['user_current_planet'] = $select;
+                Capsule::table(USERS)
+                    ->where('user_id', '=', $this->user_data['user_id'])
+                    ->update([
+                        "user_current_planet" => $select
+                    ]);
             }
         }
     }
@@ -426,94 +441,73 @@ class UsersLib extends XGPCore
      * @param array   $data        The data as an array
      * @param boolean $full_insert Insert all the required tables
      *
-     * @return void
+     * @return integer
      */
     public function createUserWithOptions($data, $full_insert = true)
     {
-        if (is_array($data)) {
-            
-            $insert_query   = 'INSERT INTO ' . USERS . ' SET ';
-            
-            foreach ($data as $column => $value) {
-                $insert_query .= "`" . $column . "` = '" . $value . "', ";
-            }
-                
-            // Remove last comma
-            $insert_query   = substr_replace($insert_query, '', -2) . ';';
-            
-            parent::$db->query($insert_query);
-            
-            // get the last inserted user id
-            $user_id  = parent::$db->insertId();
-            
-            // insert extra required tables
-            if ($full_insert) {
-                
-                // create the buildings, defenses and ships tables
-                self::createPremium($user_id);
-                self::createResearch($user_id);
-                self::createSettings($user_id);
-                self::createUserStatistics($user_id);
-            }
-            
-            return $user_id;
+        $data["created_at"]  =
+        $data["user_register_time"] =
+        $data["user_onlinetime"] =
+        $data["updated_at"] = Carbon::now();
+        $data["user_lastip"] = $_SERVER["REMOTE_ADDR"];
+        $theUserID = Capsule::table(USERS)->insertGetId($data);
+
+        if($full_insert) {
+            self::createPremium($theUserID);
+            self::createResearch($theUserID);
+            self::createSettings($theUserID);
+            self::createUserStatistics($theUserID);
         }
+
+        return $theUserID;
     }
     
     /**
      * createPremium
      * 
-     * @param type $user_id The user id
+     * @param int $user_id The user id
      * 
-     * @return void
+     * @return bool
      */
     public function createPremium($user_id)
     {
-        parent::$db->query(
-            "INSERT INTO " . PREMIUM . " SET `premium_user_id` = '" . $user_id . "';"
-        );
+        return Capsule::table(PREMIUM)->insert(["premium_user_id" => $user_id]);
     }
     
     /**
      * createResearch
      * 
-     * @param type $user_id The user id
+     * @param int $user_id The user id
      * 
      * @return void
      */
     public function createResearch($user_id)
     {
-        parent::$db->query(
-            "INSERT INTO " . RESEARCH . " SET `research_user_id` = '" . $user_id . "';"
-        );
+        Capsule::table(RESEARCH)->insert(["research_user_id" => $user_id]);
     }
     
     /**
      * createSettings
      * 
-     * @param type $user_id The user id
+     * @param int $user_id The user id
      * 
      * @return void
      */
     public function createSettings($user_id)
     {
-        parent::$db->query(
-            "INSERT INTO " . SETTINGS . " SET `setting_user_id` = '" . $user_id . "';"
-        );
+        Capsule::table(SETTINGS)->insert(["setting_user_id" => $user_id]);
     }
     
     /**
      * createUserStatistics
      * 
-     * @param type $user_id The user id
+     * @param int $user_id The user id
      * 
      * @return void
      */
     public function createUserStatistics($user_id)
     {
-        parent::$db->query(
-            "INSERT INTO " . USERS_STATISTICS . " SET `user_statistic_user_id` = '" . $user_id . "';"
-        );
+        Capsule::table(USERS_STATISTICS)->insert(["user_statistic_user_id" => $user_id]);
     }
 }
 

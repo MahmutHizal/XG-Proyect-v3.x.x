@@ -58,18 +58,6 @@ class Installation extends XGPCore
             die(FunctionsLib::message($this->langs['ins_no_server_requirements'], '', '', false, false));
         }
     }
-
-    /**
-     * __destruct
-     *
-     * @return void
-     */
-    public function __destruct()
-    {
-        if(Manager::connection())
-            Manager::connection()->disconnect();
-    }
-
     /**
      * buildPage
      *
@@ -468,6 +456,7 @@ class Installation extends XGPCore
      */
     private function insertDbData()
     {
+        $resources = parent::$objects->getObjects();
 
         if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
             // Store the current sql_mode
@@ -483,28 +472,28 @@ class Installation extends XGPCore
             $table->string('user_password', 40);
             $table->string('user_email', 64)->unique();
             $table->string('user_email_permanent', 64);
-            $table->tinyInteger('user_authlevel')->default(0);
-            $table->integer('user_home_planet_id')->default(0)->unsigned();
+            $table->tinyInteger('user_authlevel')->default("0");
+            $table->integer('user_home_planet_id')->default("0")->unsigned();
 
-            $table->integer('user_galaxy')->default(0);
-            $table->integer('user_planet')->default(0);
-            $table->integer('user_system')->default(0);
-            $table->integer('user_current_planet')->default(0);
+            $table->integer('user_galaxy')->default("0");
+            $table->integer('user_planet')->default("0");
+            $table->integer('user_system')->default("0");
+            $table->integer('user_current_planet')->default("0");
 
             $table->ipAddress('user_lastip');
             $table->ipAddress('user_ip_at_reg');
-            $table->text('user_agent');
+            $table->text('user_agent')->nullable();
             $table->string('user_current_page', 32);
             $table->timestamp('user_register_time')->nullable();
             $table->timestamp('user_onlinetime')->nullable();
 
-            $table->text('user_fleet_shortcuts');
+            $table->text('user_fleet_shortcuts')->nullable();
 
-            $table->integer('user_ally_id')->default(0);
-            $table->integer('user_ally_request')->default(0);
-            $table->text('user_ally_request_text');
+            $table->integer('user_ally_id')->default("0");
+            $table->integer('user_ally_request')->default("0");
+            $table->text('user_ally_request_text')->nullable();
             $table->timestamp('user_ally_register_time')->nullable();
-            $table->integer('user_ally_rank_id')->default(0);
+            $table->integer('user_ally_rank_id')->default("0");
 
             $table->timestamp('user_banned')->nullable();
 
@@ -514,13 +503,13 @@ class Installation extends XGPCore
         Manager::schema()->create(ACS_FLEETS, function(Blueprint $table){
             $table->increments('acs_fleet_id');
             $table->string('acs_fleet_name', 50);
-            $table->text('acs_fleet_members');
-            $table->text('acs_fleet_fleets');
+            $table->text('acs_fleet_members')->nullable();
+            $table->text('acs_fleet_fleets')->nullable();
             $table->integer('acs_fleet_galaxy');
             $table->integer('acs_fleet_system');
             $table->integer('acs_fleet_planet');
             $table->integer('acs_fleet_planet_type');
-            $table->text('acs_fleet_invited');
+            $table->text('acs_fleet_invited')->nullable();
             $table->timestamps();
         });
 
@@ -529,7 +518,7 @@ class Installation extends XGPCore
             $table->string('alliance_name', 32);
             $table->string('alliance_tag', 8);
             $table->integer('alliance_owner')
-                ->default(0);
+                ->default("0");
             $table->string('alliance_description', 2000);
             $table->string('alliance_text', 2000);
             $table->string('alliance_request', 2000);
@@ -537,8 +526,8 @@ class Installation extends XGPCore
             $table->string('alliance_image', 255);
             $table->string('alliance_owner_range', 32);
             $table->integer('alliance_request_notallow')
-                ->default(0);
-            $table->text('alliance_ranks');
+                ->default("0");
+            $table->text('alliance_ranks')->nullable();
 
             $table->timestamps();
             $table->softDeletes();
@@ -546,25 +535,25 @@ class Installation extends XGPCore
 
         Manager::schema()->create(ALLIANCE_STATISTICS, function(Blueprint $table) {
             $table->increments('alliance_statistic_alliance_id');
-            $table->double('alliance_statistic_buildings_points', 132, 8)->default(0);
-            $table->integer('alliance_statistic_buildings_old_rank')->default(0);
-            $table->integer('alliance_statistic_buildings_rank')->default(0);
+            $table->double('alliance_statistic_buildings_points', 132, 8)->default("0");
+            $table->integer('alliance_statistic_buildings_old_rank')->default("0");
+            $table->integer('alliance_statistic_buildings_rank')->default("0");
 
-            $table->double('alliance_statistic_defenses_points', 132, 8)->default(0);
-            $table->integer('alliance_statistic_defenses_old_rank')->default(0);
-            $table->integer('alliance_statistic_defenses_rank')->default(0);
+            $table->double('alliance_statistic_defenses_points', 132, 8)->default("0");
+            $table->integer('alliance_statistic_defenses_old_rank')->default("0");
+            $table->integer('alliance_statistic_defenses_rank')->default("0");
 
-            $table->double('alliance_statistic_ships_points', 132, 8)->default(0);
-            $table->integer('alliance_statistic_ships_old_rank')->default(0);
-            $table->integer('alliance_statistic_ships_rank')->default(0);
+            $table->double('alliance_statistic_ships_points', 132, 8)->default("0");
+            $table->integer('alliance_statistic_ships_old_rank')->default("0");
+            $table->integer('alliance_statistic_ships_rank')->default("0");
 
-            $table->double('alliance_statistic_technology_points', 132, 8)->default(0);
-            $table->integer('alliance_statistic_technology_old_rank')->default(0);
-            $table->integer('alliance_statistic_technology_rank')->default(0);
+            $table->double('alliance_statistic_technology_points', 132, 8)->default("0");
+            $table->integer('alliance_statistic_technology_old_rank')->default("0");
+            $table->integer('alliance_statistic_technology_rank')->default("0");
 
-            $table->double('alliance_statistic_total_points', 132, 8)->default(0);
-            $table->integer('alliance_statistic_total_old_rank')->default(0);
-            $table->integer('alliance_statistic_total_rank')->default(0);
+            $table->double('alliance_statistic_total_points', 132, 8)->default("0");
+            $table->integer('alliance_statistic_total_old_rank')->default("0");
+            $table->integer('alliance_statistic_total_rank')->default("0");
 
             $table->timestamps();
         });
@@ -584,89 +573,71 @@ class Installation extends XGPCore
             $table->increments('buddy_id');
             $table->integer('buddy_sender')->unsigned();
             $table->integer('buddy_receiver')->unsigned();
-            $table->integer('buddy_status')->default(0);
+            $table->integer('buddy_status')->default("0");
             $table->string('buddy_request_text', 500)->nullable();
             $table->timestamps();
         });
 
-        Manager::schema()->create(BUILDINGS, function(Blueprint $table){
+        Manager::schema()->create(BUILDINGS, function(Blueprint $table) use($resources) {
             $table->increments('building_id');
             $table->integer('building_planet_id')->unsigned();
-            $table->integer('building_metal_mine')->default(0);
-            $table->integer('building_crystal_mine')->default(0);
-            $table->integer('building_deuterium_sintetizer')->default(0);
-            $table->integer('building_solar_plant')->default(0);
-            $table->integer('building_fusion_reactor')->default(0);
-            $table->integer('building_robot_factory')->default(0);
-            $table->integer('building_nano_factory')->default(0);
-            $table->integer('building_hangar')->defaut(0);
-            $table->integer('building_metal_store')->default(0);
-            $table->integer('building_crystal_store')->default(0);
-            $table->integer('building_deuterium_tank')->default(0);
-            $table->integer('building_laboratory')->default(0);
-            $table->integer('building_terraformer')->default(0);
-            $table->integer('building_ally_deposit')->default(0);
-            $table->integer('building_missile_silo')->default(0);
-            $table->integer('building_mondbasis')->default(0);
-            $table->integer('building_phalanx')->default(0);
-            $table->integer('building_jump_gate')->default(0);
+            for($i = 1; $i <= 100;$i++)
+            {
+                if(in_array($i, array_keys($resources)))
+                    $table->integer($resources[$i])->default("0");
+            }
         });
 
-        Manager::schema()->create(DEFENSES, function(Blueprint $table){
+        Manager::schema()->create(DEFENSES, function(Blueprint $table) use($resources) {
             $table->increments('defense_id');
             $table->integer('defense_planet_id')->unsigned();
-            $table->integer('defense_rocket_launcher')->default(0);
-            $table->integer('defense_light_laser')->default(0);
-            $table->integer('defense_heavy_laser')->default(0);
-            $table->integer('defense_ion_cannon')->default(0);
-            $table->integer('defense_gauss_cannon')->default(0);
-            $table->integer('defense_plasma_turret')->default(0);
-            $table->integer('defense_small_shield_dome')->default(0);
-            $table->integer('defense_large_shield_dome')->default(0);
-            $table->integer('defense_anti-ballistic_missile')->default(0);
-            $table->integer('defense_interplanetary_missile')->default(0);
+            for($i = 400; $i <= 600;$i++)
+            {
+                if(in_array($i, array_keys($resources)))
+                    $table->integer($resources[$i])->default("0");
+            }
         });
 
         Manager::schema()->create(FLEETS, function(Blueprint $table){
             $table->increments('fleet_id');
-            $table->integer('fleet_owner')->default(0);
-            $table->integer('fleet_mission')->default(0);
-            $table->integer('fleet_amount')->default(0);
+            $table->integer('fleet_owner')->default("0");
+            $table->integer('fleet_mission')->default("0");
+            $table->integer('fleet_amount')->default("0");
             $table->text('fleet_array')->nullable();
 
             $table->timestamp('fleet_start_time')->nullable();
-            $table->integer('fleet_start_galaxy')->default(0);
-            $table->integer('fleet_start_system')->default(0);
-            $table->integer('fleet_start_planet')->default(0);
-            $table->integer('fleet_start_type')->default(0);
+            $table->integer('fleet_start_galaxy')->default("0");
+            $table->integer('fleet_start_system')->default("0");
+            $table->integer('fleet_start_planet')->default("0");
+            $table->integer('fleet_start_type')->default("0");
 
             $table->timestamp('fleet_end_time')->nullable();
             $table->timestamp('fleet_end_stay')->nullable();
-            $table->integer('fleet_end_galaxy')->default(0);
-            $table->integer('fleet_end_system')->default(0);
-            $table->integer('fleet_end_planet')->default(0);
-            $table->integer('fleet_end_type')->default(0);
+            $table->integer('fleet_end_galaxy')->default("0");
+            $table->integer('fleet_end_system')->default("0");
+            $table->integer('fleet_end_planet')->default("0");
+            $table->integer('fleet_end_type')->default("0");
 
-            $table->integer('fleet_target_obj')->default(0);
+            $table->integer('fleet_target_obj')->default("0");
 
-            $table->double('fleet_resource_metal', 132, 8)->default(0);
-            $table->double('fleet_resource_crystal', 132, 8)->default(0);
-            $table->double('fleet_resource_deuterium', 132, 8)->default(0);
-            $table->integer('fleet_target_owner')->default(0);
-            $table->string('fleet_group', 15)->default(0);
-            $table->integer('fleet_mess')->default(0);
+            $table->double('fleet_resource_metal', 132, 8)->default("0");
+            $table->double('fleet_resource_crystal', 132, 8)->default("0");
+            $table->double('fleet_resource_deuterium', 132, 8)->default("0");
+            $table->integer('fleet_target_owner')->default("0");
+            $table->string('fleet_group', 15)->default("0");
+            $table->integer('fleet_mess')->default("0");
             $table->integer('fleet_creation')->nullable();
         });
 
         Manager::schema()->create(MESSAGES, function(Blueprint $table){
             $table->increments('message_id');
-            $table->integer('message_sender')->default(0);
-            $table->integer('message_receiver')->default(0);
-            $table->integer('message_type')->default(0);
+            $table->integer('message_sender')->default("0");
+            $table->integer('message_receiver')->default("0");
+            $table->integer('message_type')->default("0");
             $table->string('message_from',48)->nullable();
-            $table->text('message_subject');
-            $table->text('message_text');
-            $table->integer('message_read')->default(1);
+            $table->text('message_subject')->nullable();
+            $table->text('message_text')->nullable();
+            $table->integer('message_read')->default("1");
 
             $table->timestamps();
             $table->softDeletes();
@@ -676,7 +647,7 @@ class Installation extends XGPCore
             $table->increments('note_id');
             $table->integer('note_owner')->unsigned();
             $table->timestamps();
-            $table->integer('note_priority')->default(0);
+            $table->integer('note_priority')->default("0");
             $table->string('note_title', 32);
             $table->text('note_text')->nullable();
 
@@ -685,7 +656,7 @@ class Installation extends XGPCore
         Manager::schema()->create(OPTIONS, function(Blueprint $table){
             $table->increments('option_id');
             $table->string('option_name', 191)->nullable();
-            $table->text('option_value')->nullable(0);
+            $table->text('option_value')->nullable();
         });
 
         Manager::schema()->create(PLANETS, function (Blueprint $table){
@@ -693,56 +664,57 @@ class Installation extends XGPCore
             $table->string('planet_name', '50')->nullable();
             $table->integer('planet_user_id')->unsigned();
 
-            $table->integer('planet_galaxy')->default(0);
-            $table->integer('planet_system')->default(0);
-            $table->integer('planet_planet')->default(0);
+            $table->integer('planet_galaxy')->default("0");
+            $table->integer('planet_system')->default("0");
+            $table->integer('planet_planet')->default("0");
 
-            $table->integer('planet_type')->default(1);
-            $table->integer('planet_destroyed')->default(0);
+            $table->integer('planet_type')->default("1");
 
-            $table->integer('planet_b_building')->default(0);
             $table->text('planet_b_building_id')->nullable();
 
-            $table->integer('planet_b_tech')->default(0);
             $table->text('planet_b_tech_id')->nullable();
 
-            $table->integer('planet_b_hangar')->default(0);
             $table->text('planet_b_hangar_id')->nullable();
 
             $table->string('planet_image', 32)->default('normaltempplanet01');
-            $table->integer('planet_diameter')->default(12800);
-            $table->integer('planet_field_current')->default(0);
-            $table->integer('planet_field_max')->default(163);
-            $table->integer('planet_temp_min')->default(-17);
-            $table->integer('planet_temp_max')->default(23);
+            $table->integer('planet_diameter')->default("12800");
+            $table->integer('planet_field_current')->default("0");
+            $table->integer('planet_field_max')->default("163");
+            $table->integer('planet_temp_min')->default("-17");
+            $table->integer('planet_temp_max')->default("23");
 
-            $table->double('planet_metal', 132, 8)->default(0);
-            $table->integer('planet_metal_perhour')->default(0);
-            $table->bigInteger('planet_metal_max')->default(10000);
+            $table->double('planet_metal', 132, 8)->default("0");
+            $table->integer('planet_metal_perhour')->default("0");
+            $table->bigInteger('planet_metal_max')->default("10000");
 
-            $table->double('planet_crystal', 132, 8)->default(0);
-            $table->integer('planet_crystal_perhour')->default(0);
-            $table->bigInteger('planet_crystal_max')->default(10000);
+            $table->double('planet_crystal', 132, 8)->default("0");
+            $table->integer('planet_crystal_perhour')->default("0");
+            $table->bigInteger('planet_crystal_max')->default("10000");
 
-            $table->double('planet_deuterium', 132, 8)->default(0);
-            $table->integer('planet_deuterium_perhour')->default(0);
-            $table->bigInteger('planet_deuterium_max')->default(10000);
+            $table->double('planet_deuterium', 132, 8)->default("0");
+            $table->integer('planet_deuterium_perhour')->default("0");
+            $table->bigInteger('planet_deuterium_max')->default("10000");
 
-            $table->integer('planet_energy_used')->default(0);
-            $table->bigInteger('planet_energy_max')->default(0);
+            $table->integer('planet_energy_used')->default("0");
+            $table->bigInteger('planet_energy_max')->default("0");
 
-            $table->integer('planet_building_metal_mine_porcent')->default(10);
-            $table->integer('planet_building_crystal_mine_porcent')->default(10);
-            $table->integer('planet_building_deuterium_sintetizer_porcent')->default(10);
-            $table->integer('planet_building_solar_plant_porcent')->default(10);
-            $table->integer('planet_building_fusion_reactor_porcent')->default(10);
-            $table->integer('planet_ship_solar_satellite_porcent')->default(10);
+            $table->integer('planet_building_metal_mine_porcent')->default("10");
+            $table->integer('planet_building_crystal_mine_porcent')->default("10");
+            $table->integer('planet_building_deuterium_sintetizer_porcent')->default("10");
+            $table->integer('planet_building_solar_plant_porcent')->default("10");
+            $table->integer('planet_building_fusion_reactor_porcent')->default("10");
+            $table->integer('planet_ship_solar_satellite_porcent')->default("10");
 
-            $table->integer('planet_last_jump_time')->default(0);
-            $table->bigInteger('planet_debris_metal')->default(0);
-            $table->bigInteger('planet_debris_crystal')->default(0);
-            $table->integer('planet_invisible_start_time')->default(0);
+            $table->bigInteger('planet_debris_metal')->default("0");
+            $table->bigInteger('planet_debris_crystal')->default("0");
 
+            $table->timestamp('planet_invisible_start_time')->nullable();
+            $table->timestamp('planet_last_update')->nullable();
+            $table->timestamp('planet_last_jump_time')->nullable();
+            $table->timestamp('planet_b_tech')->nullable();
+            $table->timestamp('planet_b_building')->nullable();
+            $table->timestamp('planet_destroyed')->nullable();
+            $table->timestamp('planet_b_hangar')->nullable();
 
             $table->timestamps();
 
@@ -755,12 +727,12 @@ class Installation extends XGPCore
         Manager::schema()->create(PREMIUM, function(Blueprint $table){
             $table->increments('premium_id');
             $table->integer('premium_user_id')->unsigned();
-            $table->integer('premium_dark_matter')->default(0);
-            $table->integer('premium_officier_commander')->default(0);
-            $table->integer('premium_officier_admiral')->default(0);
-            $table->integer('premium_officier_engineer')->default(0);
-            $table->integer('premium_officier_geologist')->default(0);
-            $table->integer('premium_officier_technocrat')->default(0);
+            $table->integer('premium_dark_matter')->default("0");
+            $table->integer('premium_officier_commander')->default("0");
+            $table->integer('premium_officier_admiral')->default("0");
+            $table->integer('premium_officier_engineer')->default("0");
+            $table->integer('premium_officier_geologist')->default("0");
+            $table->integer('premium_officier_technocrat')->default("0");
 
             $table->foreign('premium_user_id')
                 ->references('user_id')
@@ -772,31 +744,20 @@ class Installation extends XGPCore
             $table->increments('report_id');
             $table->string('report_owners');
             $table->string('report_rid');
-            $table->text('report_content');
-            $table->tinyInteger('report_destroyed')->default(0);
+            $table->text('report_content')->nullable();
+            $table->tinyInteger('report_destroyed')->default("0");
             $table->timestamps();
         });
 
-        Manager::schema()->create(RESEARCH, function (Blueprint $table){
+        Manager::schema()->create(RESEARCH, function (Blueprint $table) use($resources) {
             $table->increments('research_id');
             $table->integer('research_user_id')->unsigned();
-            $table->integer('research_current_research')->default(0);
-            $table->integer('research_espionage_technology')->default(0);
-            $table->integer('research_computer_technology')->default(0);
-            $table->integer('research_weapons_technology')->default(0);
-            $table->integer('research_shielding_technology')->default(0);
-            $table->integer('research_armour_technology')->default(0);
-            $table->integer('research_energy_technology')->default(0);
-            $table->integer('research_hyperspace_technology')->default(0);
-            $table->integer('research_combustion_drive')->default(0);
-            $table->integer('research_impulse_drive')->default(0);
-            $table->integer('research_hyperspace_drive')->default(0);
-            $table->integer('research_laser_technology')->default(0);
-            $table->integer('research_ionic_technology')->default(0);
-            $table->integer('research_plasma_technology')->default(0);
-            $table->integer('research_intergalactic_research_network')->default(0);
-            $table->integer('research_astrophysics')->default(0);
-            $table->integer('research_graviton_technology')->default(0);
+            $table->integer('research_current_research')->default("0");
+            for($i = 101; $i <= 200;$i++)
+            {
+                if(in_array($i, array_keys($resources)))
+                    $table->integer($resources[$i])->default("0");
+            }
 
             $table->foreign('research_user_id')
                 ->references('user_id')
@@ -813,18 +774,18 @@ class Installation extends XGPCore
         Manager::schema()->create(SETTINGS, function (Blueprint $table) {
             $table->increments('setting_id');
             $table->integer('setting_user_id')->unsigned();
-            $table->tinyInteger('setting_no_ip_check')->default(1);
-            $table->tinyInteger('setting_planet_sort')->default(0);
-            $table->tinyInteger('setting_planet_order')->default(0);
-            $table->tinyInteger('setting_probes_amount')->default(1);
-            $table->tinyInteger('setting_fleet_actions')->default(0);
-            $table->tinyInteger('setting_galaxy_espionage')->default(1);
-            $table->tinyInteger('setting_galaxy_write')->default(1);
-            $table->tinyInteger('setting_galaxy_buddy')->default(1);
-            $table->tinyInteger('setting_galaxy_missile')->default(1);
-            $table->tinyInteger('setting_vacations_status')->default(0);
-            $table->tinyInteger('setting_vacations_until')->default(0);
-            $table->tinyInteger('setting_delete_account')->default(0);
+            $table->tinyInteger('setting_no_ip_check')->default("1");
+            $table->tinyInteger('setting_planet_sort')->default("0");
+            $table->tinyInteger('setting_planet_order')->default("0");
+            $table->tinyInteger('setting_probes_amount')->default("1");
+            $table->tinyInteger('setting_fleet_actions')->default("0");
+            $table->tinyInteger('setting_galaxy_espionage')->default("1");
+            $table->tinyInteger('setting_galaxy_write')->default("1");
+            $table->tinyInteger('setting_galaxy_buddy')->default("1");
+            $table->tinyInteger('setting_galaxy_missile')->default("1");
+            $table->tinyInteger('setting_vacations_status')->default("0");
+            $table->tinyInteger('setting_vacations_until')->default("0");
+            $table->tinyInteger('setting_delete_account')->default("0");
 
 
             $table->foreign('setting_user_id')
@@ -833,24 +794,15 @@ class Installation extends XGPCore
                 ->onDelete('cascade');
         });
 
-        Manager::schema()->create(SHIPS, function(Blueprint $table) {
+        Manager::schema()->create(SHIPS, function(Blueprint $table) use($resources) {
             $table->increments('ship_id');
             $table->integer('ship_planet_id')->unsigned();
 
-            $table->integer('ship_small_cargo_ship')->defaut(0);
-            $table->integer('ship_big_cargo_ship')->defaut(0);
-            $table->integer('ship_light_fighter')->defaut(0);
-            $table->integer('ship_heavy_fighter')->defaut(0);
-            $table->integer('ship_cruiser')->defaut(0);
-            $table->integer('ship_battleship')->defaut(0);
-            $table->integer('ship_colony_ship')->defaut(0);
-            $table->integer('ship_recycler')->defaut(0);
-            $table->integer('ship_espionage_probe')->defaut(0);
-            $table->integer('ship_bomber')->defaut(0);
-            $table->integer('ship_solar_satellite')->defaut(0);
-            $table->integer('ship_destroyer')->defaut(0);
-            $table->integer('ship_deathstar')->defaut(0);
-            $table->integer('ship_battlecruiser')->defaut(0);
+            for($i = 201; $i <= 400;$i++)
+            {
+                if(in_array($i, array_keys($resources)))
+                    $table->integer($resources[$i])->default("0");
+            }
 
             $table->foreign('ship_planet_id')
                 ->references('planet_id')
@@ -862,25 +814,25 @@ class Installation extends XGPCore
             $table->increments('user_statistic_id');
             $table->integer('user_statistic_user_id')->unsigned();
 
-            $table->double('user_statistic_buildings_points', 132, 8)->default(0);
-            $table->integer('user_statistic_buildings_old_rank')->default(0);
-            $table->integer('user_statistic_buildings_rank')->default(0);
+            $table->double('user_statistic_buildings_points', 132, 8)->default("0");
+            $table->integer('user_statistic_buildings_old_rank')->default("0");
+            $table->integer('user_statistic_buildings_rank')->default("0");
 
-            $table->double('user_statistic_defenses_points', 132, 8)->default(0);
-            $table->integer('user_statistic_defenses_old_rank')->default(0);
-            $table->integer('user_statistic_defenses_rank')->default(0);
+            $table->double('user_statistic_defenses_points', 132, 8)->default("0");
+            $table->integer('user_statistic_defenses_old_rank')->default("0");
+            $table->integer('user_statistic_defenses_rank')->default("0");
 
-            $table->double('user_statistic_ships_points', 132, 8)->default(0);
-            $table->integer('user_statistic_ships_old_rank')->default(0);
-            $table->integer('user_statistic_ships_rank')->default(0);
+            $table->double('user_statistic_ships_points', 132, 8)->default("0");
+            $table->integer('user_statistic_ships_old_rank')->default("0");
+            $table->integer('user_statistic_ships_rank')->default("0");
 
-            $table->double('user_statistic_technology_points', 132, 8)->default(0);
-            $table->integer('user_statistic_technology_old_rank')->default(0);
-            $table->integer('user_statistic_technology_rank')->default(0);
+            $table->double('user_statistic_technology_points', 132, 8)->default("0");
+            $table->integer('user_statistic_technology_old_rank')->default("0");
+            $table->integer('user_statistic_technology_rank')->default("0");
 
-            $table->double('user_statistic_total_points', 132, 8)->default(0);
-            $table->integer('user_statistic_total_old_rank')->default(0);
-            $table->integer('user_statistic_total_rank')->default(0);
+            $table->double('user_statistic_total_points', 132, 8)->default("0");
+            $table->integer('user_statistic_total_old_rank')->default("0");
+            $table->integer('user_statistic_total_rank')->default("0");
 
             $table->timestamps();
 
@@ -967,8 +919,8 @@ class Installation extends XGPCore
         }
 
         // some default values
-        $adm_name   = parent::$db->escapeValue($_POST['adm_user']);
-        $adm_email  = parent::$db->escapeValue($_POST['adm_email']);
+        $adm_name   = $_POST['adm_user'];
+        $adm_email  = $_POST['adm_email'];
         $adm_pass   = sha1($_POST['adm_pass']);
 
         // create user and its planet

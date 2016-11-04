@@ -43,6 +43,8 @@ class Sessions extends XGPCore implements \SessionHandlerInterface
     {
         parent::__construct();
 
+        session_start();
+
         // WE'RE GOING TO HANDLE A DIFFERENT DB OBJECT FOR THE SESSIONS
         // $this->dbc  = Capsule::connection();
 

@@ -15,6 +15,8 @@
 namespace application\libraries;
 
 use application\core\XGPCore;
+use Carbon\Carbon;
+use Illuminate\Database\Capsule\Manager;
 
 /**
  * UpdateResourcesLib Class
@@ -59,7 +61,8 @@ class UpdateResourcesLib extends XGPCore
 
         $Caps                               = array();
         $BuildTemp                          = $current_planet['planet_temp_max'];
-        $sub_query                          = '';
+        $sub_query                          = [];
+        $tech_query                         = [];
         $parse['production_level']          = 100;
 
         $post_percent                       = ProductionLib::maxProduction(
@@ -150,8 +153,16 @@ class UpdateResourcesLib extends XGPCore
             $current_planet['planet_energy_used']       = $Caps['planet_energy_used'];
             $current_planet['planet_energy_max']        = $Caps['planet_energy_max'];
         }
+        if(is_int($UpdateTime))
+            $UpdateTime = Carbon::createFromTimestamp($UpdateTime);
 
-        $ProductionTime                         = ($UpdateTime - $current_planet['planet_last_update']);
+        if(is_null($current_planet['planet_last_update']))
+            $current_planet['planet_last_update'] = Carbon::now()->subHour(1);
+        else
+            $current_planet["planet_last_update"] = Carbon::parse($current_planet["planet_last_update"]);
+
+        $ProductionTime                         = ($UpdateTime->timestamp- $current_planet['planet_last_update']->timestamp);
+
         $current_planet['planet_last_update']   = $UpdateTime;
 
         if ($current_planet['planet_energy_max'] == 0) {
@@ -276,58 +287,55 @@ class UpdateResourcesLib extends XGPCore
                             default:
                                 break;
                         }
-
-                        $sub_query  .= "`". $resource[$element] ."` = '". $current_planet[$resource[$element]] ."', ";
+                        $sub_query[$resource[$element]] = $current_planet[$resource[$element]];
                     }
                 }
             }
 
             // RESEARCH UPDATE
-            if ($current_planet['planet_b_tech'] <= time() && $current_planet['planet_b_tech_id'] != 0) {
-
-                $current_user['research_points']    = StatisticsLib::calculatePoints(
-                    $current_planet['planet_b_tech_id'],
-                    $current_user[$resource[$current_planet['planet_b_tech_id']]],
-                    'tech'
-                );
-
-                $current_user[$resource[$current_planet['planet_b_tech_id']]]++;
-
-                $tech_query = "`planet_b_tech` = '0',";
-                $tech_query .= "`planet_b_tech_id` = '0',";
-                $tech_query .= "`" . $resource[$current_planet['planet_b_tech_id']] . "` = '" .
-                    $current_user[$resource[$current_planet['planet_b_tech_id']]] ."',";
-                $tech_query .= "`user_statistic_technology_points` = `user_statistic_technology_points` + '" .
-                    $current_user['research_points'] ."',";
-                $tech_query .= "`research_current_research` = '0',";
-            } else {
-
-                $tech_query = "";
+            if(!is_null($current_planet['planet_b_tech_id']))
+            {
+                if(Carbon::parse($current_planet['planet_b_tech_id']) <= Carbon::now())
+                {
+                    $current_user['research_points']    = StatisticsLib::calculatePoints(
+                        $current_planet['planet_b_tech_id'],
+                        $current_user[$resource[$current_planet['planet_b_tech_id']]],
+                        'tech'
+                    );
+                    $current_user[$resource[$current_planet['planet_b_tech_id']]]++;
+                    $tech_query[PLANETS . ".planet_b_tech"] = NULL;
+                    $tech_query[PLANETS . ".planet_b_tech_id"] = NULL;
+                    $tech_query[RESEARCH . "." . $resource[$current_planet['planet_b_tech_id']]] = $current_user[$resource[$current_planet['planet_b_tech_id']]];
+                    $tech_query[RESEARCH . ".research_current_research"] = "0";
+                }
             }
 
-            parent::$db->query(
-                "UPDATE " . PLANETS . " AS p
-                INNER JOIN " . USERS_STATISTICS . " AS us ON us.user_statistic_user_id = p.planet_user_id
-                INNER JOIN " . DEFENSES . " AS d ON d.defense_planet_id = p.`planet_id`
-                INNER JOIN " . SHIPS . " AS s ON s.ship_planet_id = p.`planet_id`
-                INNER JOIN " . RESEARCH . " AS r ON r.research_user_id = p.planet_user_id SET
-                `planet_metal` = '" . $current_planet['planet_metal'] . "',
-                `planet_crystal` = '" . $current_planet['planet_crystal'] ."',
-                `planet_deuterium` = '" . $current_planet['planet_deuterium'] . "',
-                `planet_last_update` = '" . $current_planet['planet_last_update'] . "',
-                `planet_b_hangar_id` = '" . $current_planet['planet_b_hangar_id'] . "',
-                `planet_metal_perhour` = '" . $current_planet['planet_metal_perhour'] . "',
-                `planet_crystal_perhour` = '" . $current_planet['planet_crystal_perhour'] . "',
-                `planet_deuterium_perhour` = '" . $current_planet['planet_deuterium_perhour'] . "',
-                `planet_energy_used` = '" . $current_planet['planet_energy_used'] . "',
-                `planet_energy_max` = '" . $current_planet['planet_energy_max'] . "',
-                `user_statistic_ships_points` = `user_statistic_ships_points` + '" . $ship_points . "',
-                `user_statistic_defenses_points` = `user_statistic_defenses_points`  + '" . $defense_points . "',
-                {$sub_query}
-                {$tech_query}
-                `planet_b_hangar` = '" . $current_planet['planet_b_hangar'] . "'
-                WHERE `planet_id` = '" . $current_planet['planet_id'] . "';"
-            );
+            $theQuery = Manager::table(PLANETS)
+                ->where(PLANETS . '.planet_id', '=', $current_planet['planet_id'])
+                ->join(USERS_STATISTICS, USERS_STATISTICS . '.user_statistic_user_id', '=', PLANETS . '.planet_id')
+                ->join(DEFENSES, DEFENSES . '.defense_planet_id', '=', PLANETS . '.planet_id')
+                ->join(SHIPS, SHIPS . '.ship_planet_id', '=', PLANETS . '.planet_id')
+                ->join(RESEARCH, RESEARCH . '.research_user_id', '=', PLANETS . '.planet_user_id');
+
+            $theQuery->update(array_merge([
+                "planet_metal" => $current_planet['planet_metal'],
+                "planet_crystal" => $current_planet['planet_crystal'],
+                "planet_deuterium" => $current_planet['planet_deuterium'],
+                "planet_energy_used" => $current_planet['planet_energy_used'],
+                "planet_energy_max" => $current_planet['planet_energy_max'],
+
+                "planet_b_hangar_id" =>$current_planet['planet_b_hangar_id'],
+
+                "planet_metal_perhour" => $current_planet['planet_metal_perhour'],
+                "planet_crystal_perhour" => $current_planet['planet_crystal_perhour'],
+                "planet_deuterium_perhour" => $current_planet['planet_deuterium_perhour'],
+
+                "planet_b_hangar" => $current_planet['planet_b_hangar'],
+                "planet_last_update" => $current_planet['planet_last_update']
+            ], $sub_query, $tech_query));
+
+            $theQuery->increment("user_statistic_ships_points", $ship_points);
+            $theQuery->increment("user_statistic_defenses_points", $defense_points);
         }
     }
 
@@ -349,8 +357,10 @@ class UpdateResourcesLib extends XGPCore
             $Builded    = array();
             $BuildArray = array();
             $BuildQueue = explode(';', $current_planet['planet_b_hangar_id']);
-            
-            $current_planet['planet_b_hangar']  += $ProductionTime;
+
+            $current_planet['planet_b_hangar'] = Carbon::parse($current_planet['planet_b_hangar']);
+
+            $current_planet['planet_b_hangar']->add($ProductionTime);
 
             foreach ($BuildQueue as $Node => $Array) {
                 if ($Array != '') {
@@ -378,20 +388,19 @@ class UpdateResourcesLib extends XGPCore
 
                     $AllTime = $BuildTime * $Count;
 
-                    if ($current_planet['planet_b_hangar'] >= $BuildTime) {
+                    if ($current_planet['planet_b_hangar']->timestamp >= $BuildTime) {
 
-                        $Done   = min($Count, floor($current_planet['planet_b_hangar'] / $BuildTime));
+                        $Done   = min($Count, floor($current_planet['planet_b_hangar']->timestamp / $BuildTime));
 
                         if ($Count > $Done) {
 
-                            $current_planet['planet_b_hangar']  -= $BuildTime * $Done;
+                            $current_planet['planet_b_hangar']->sub($BuildTime * $Done);
                             
                             $UnFinished = true;
                             $Count      -= $Done;
 
                         } else {
-
-                            $current_planet['planet_b_hangar'] -= $AllTime;
+                            $current_planet['planet_b_hangar']->sub($AllTime);
                             $Count = 0;
                         }
 
@@ -416,7 +425,7 @@ class UpdateResourcesLib extends XGPCore
             }
         } else {
             $Builded                            = '';
-            $current_planet['planet_b_hangar']  = 0;
+            $current_planet['planet_b_hangar']  = NULL;
         }
 
         return $Builded;

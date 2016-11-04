@@ -15,6 +15,8 @@
 namespace application\libraries;
 
 use application\core\XGPCore;
+use Carbon\Carbon;
+use Illuminate\Database\Capsule\Manager as Capsule;
 
 /**
  * StatisticsLib Class
@@ -74,7 +76,7 @@ class StatisticsLib extends XGPCore
      */
     public static function rebuildPoints($user_id, $planet_id, $what)
     {
-        if (!in_array(DB_PREFIX . $what, [BUILDINGS, DEFENSES, RESEARCH, SHIPS])) {
+        if (!in_array($what, [BUILDINGS, DEFENSES, RESEARCH, SHIPS])) {
             return false;
         }
         
@@ -82,19 +84,15 @@ class StatisticsLib extends XGPCore
         $query  = '';
         
         if ($what == 'research') {
-            
-            $query  = "SELECT * 
-                        FROM `" . RESEARCH . "` ttu
-                        WHERE ttu.research_user_id = '" . $user_id . "';";
+            $query = Capsule::table(RESEARCH)
+                ->where('research_user_id', '=', $user_id);
         } else {
-            
-            $query  = "SELECT * 
-                        FROM `" . DB_PREFIX . $what . "` ttu
-                        WHERE ttu." . rtrim($what, 's') . "_planet_id = '" . $planet_id . "';";
+            $query = Capsule::table($what)
+                ->where($what . '.' . rtrim($what, 's') . '_planet_id', '=', $planet_id);
         }
         
         
-        $objectsToUpdate    = parent::$db->queryFetch($query);
+        $objectsToUpdate    = get_object_vars($query->first());
         $objects            = parent::$objects->getObjects();
 
         if (!is_null($objects)) {
@@ -123,12 +121,11 @@ class StatisticsLib extends XGPCore
 
                 $what   = strtr($what, ['research' => 'technology']);
 
-                parent::$db->query(
-                    "UPDATE " . USERS_STATISTICS . " SET 
-                        `user_statistic_" . $what . "_points` = '" . $points . "' 
-                    WHERE `user_statistic_user_id` = '" . $user_id . "'"
-                );
-
+                Capsule::table(USERS_STATISTICS)
+                    ->where('user_statistic_user_id', '=', $user_id)
+                    ->update([
+                       "user_statistic_" . $what . "_points" => $points
+                    ]);
                 return true;
             }
         }
@@ -148,24 +145,22 @@ class StatisticsLib extends XGPCore
         $mtime      = explode(' ', $mtime);
         $mtime      = $mtime[1] + $mtime[0];
         $starttime  = $mtime;
-        self::$time = time();
+        self::$time = Carbon::now();
 
         // INITIAL MEMORY
         $result['initial_memory'] = [round(memory_get_usage() / 1024, 1), round(memory_get_usage(1) / 1024, 1)];
-
         // MAKE STATISTICS FOR USERS
         self::makeUserRank();
 
         // MAKE STATISTICS FOR ALLIANCE
         self::makeAllyRank();
-
         // END STATISTICS BUILD
         $mtime      = microtime();
         $mtime      = explode(" ", $mtime);
         $mtime      = $mtime[1] + $mtime[0];
         $endtime    = $mtime;
 
-        $result['stats_time']   = self::$time;
+        $result['stats_time']   = self::$time->timestamp;
         $result['totaltime']    = ($endtime - $starttime);
         $result['memory_peak']  = [round(memory_get_peak_usage() / 1024, 1), round(memory_get_peak_usage(1) / 1024, 1)];
         $result['end_memory']   = [round(memory_get_usage() / 1024, 1), round(memory_get_usage(1) / 1024, 1)];
@@ -181,43 +176,40 @@ class StatisticsLib extends XGPCore
     private static function makeUserRank()
     {
         // GET ALL DATA FROM THE USERS TO UPDATE
-        $all_stats_data = parent::$db->query(
-            "SELECT `user_statistic_user_id`,
-            `user_statistic_technology_rank`,
-            `user_statistic_technology_points`,
-            `user_statistic_buildings_rank`,
-            `user_statistic_buildings_points`,
-            `user_statistic_defenses_rank`,
-            `user_statistic_defenses_points`,
-            `user_statistic_ships_rank`,
-            `user_statistic_ships_points`,
-            `user_statistic_total_rank`,
-            (user_statistic_buildings_points 
-                + user_statistic_defenses_points 
-                + user_statistic_ships_points 
-                + user_statistic_technology_points
-            ) AS total_points
-            FROM " . USERS_STATISTICS . "
-            ORDER BY `user_statistic_user_id` ASC;"
-        );
+        $all_stats_data = Capsule::table(USERS_STATISTICS)
+            ->select([
+                "user_statistic_user_id",
+                "user_statistic_technology_rank",
+                "user_statistic_technology_points",
+                "user_statistic_buildings_rank",
+                "user_statistic_buildings_points",
+                "user_statistic_defenses_rank",
+                "user_statistic_defenses_points",
+                "user_statistic_ships_rank",
+                "user_statistic_ships_points",
+                "user_statistic_total_rank",
+                Capsule::connection()
+                    ->raw('(user_statistic_buildings_points + user_statistic_defenses_points + user_statistic_ships_points + user_statistic_technology_points) AS total_points')
+            ])
+            ->orderBy('user_statistic_user_id');
 
         // BUILD ALL THE ARRAYS
-        while ($CurUser = parent::$db->fetchAssoc($all_stats_data)) {
+        foreach ($all_stats_data->get() as $CurUser)
+        {
+            $tech['old_rank'][$CurUser->user_statistic_user_id]   = $CurUser->user_statistic_technology_rank;
+            $tech['points'][$CurUser->user_statistic_user_id]     = $CurUser->user_statistic_technology_points;
 
-            $tech['old_rank'][$CurUser['user_statistic_user_id']]   = $CurUser['user_statistic_technology_rank'];
-            $tech['points'][$CurUser['user_statistic_user_id']]     = $CurUser['user_statistic_technology_points'];
+            $build['old_rank'][$CurUser->user_statistic_user_id]  = $CurUser->user_statistic_buildings_rank;
+            $build['points'][$CurUser->user_statistic_user_id]    = $CurUser->user_statistic_buildings_points;
 
-            $build['old_rank'][$CurUser['user_statistic_user_id']]  = $CurUser['user_statistic_buildings_rank'];
-            $build['points'][$CurUser['user_statistic_user_id']]    = $CurUser['user_statistic_buildings_points'];
+            $defs['old_rank'][$CurUser->user_statistic_user_id]   = $CurUser->user_statistic_defenses_rank;
+            $defs['points'][$CurUser->user_statistic_user_id]     = $CurUser->user_statistic_defenses_points;
 
-            $defs['old_rank'][$CurUser['user_statistic_user_id']]   = $CurUser['user_statistic_defenses_rank'];
-            $defs['points'][$CurUser['user_statistic_user_id']]     = $CurUser['user_statistic_defenses_points'];
+            $ships['old_rank'][$CurUser->user_statistic_user_id]  = $CurUser->user_statistic_ships_rank;
+            $ships['points'][$CurUser->user_statistic_user_id]    = $CurUser->user_statistic_ships_points;
 
-            $ships['old_rank'][$CurUser['user_statistic_user_id']]  = $CurUser['user_statistic_ships_rank'];
-            $ships['points'][$CurUser['user_statistic_user_id']]    = $CurUser['user_statistic_ships_points'];
-
-            $total['old_rank'][$CurUser['user_statistic_user_id']]  = $CurUser['user_statistic_total_rank'];
-            $total['points'][$CurUser['user_statistic_user_id']]    = $CurUser['total_points'];
+            $total['old_rank'][$CurUser->user_statistic_user_id]  = $CurUser->user_statistic_total_rank;
+            $total['points'][$CurUser->user_statistic_user_id]    = $CurUser->total_points;
         }
 
         // ORDER THEM FROM HIGHEST TO LOWEST
@@ -282,72 +274,34 @@ class StatisticsLib extends XGPCore
             }
         }
 
-        // UPDATE QUERY
-        $update_query = "INSERT INTO " . USERS_STATISTICS . "
-                        (user_statistic_user_id,
-                        user_statistic_buildings_old_rank,
-                        user_statistic_buildings_rank,
-                        user_statistic_defenses_old_rank,
-                        user_statistic_defenses_rank,
-                        user_statistic_ships_old_rank,
-                        user_statistic_ships_rank,
-                        user_statistic_technology_old_rank,
-                        user_statistic_technology_rank,
-                        user_statistic_total_points,
-                        user_statistic_total_old_rank,
-                        user_statistic_total_rank,
-                        user_statistic_update_time) VALUES ";
-
-        // SET VARIABLES
-        $values = '';
-        $update = '';
-
         // TOTAL POINTS
         // UPDATE QUERY DYNAMIC BLOCK
         foreach ($total as $key => $value) {
-
             if ($key == 'points') {
-
                 foreach ($value as $user_id => $data) {
+                    Capsule::table(USERS_STATISTICS)
+                        ->updateOrInsert(["user_statistic_user_id" => $user_id],[
+                            "user_statistic_buildings_old_rank" => $build['old_rank'][$user_id],
+                            "user_statistic_buildings_rank" => $build['rank'][$user_id],
 
-                    $values .= '(' . $user_id . ',
-                                ' . $build['old_rank'][$user_id] . ',
-                                ' . $build['rank'][$user_id] . ',
-                                ' . $defs['old_rank'][$user_id] . ',
-                                ' . $defs['rank'][$user_id] . ',
-                                ' . $ships['old_rank'][$user_id] . ',
-                                ' . $ships['rank'][$user_id] . ',
-                                ' . $tech['old_rank'][$user_id] . ',
-                                ' . $tech['rank'][$user_id] . ',
-                                ' . $total['points'][$user_id] . ',
-                                ' . $total['old_rank'][$user_id] . ',
-                                ' . $rank['tota'] ++ . ',
-                                ' . self::$time . '),';
+                            "user_statistic_defenses_old_rank" => $defs['old_rank'][$user_id],
+                            "user_statistic_defenses_rank" => $defs['rank'][$user_id],
+
+                            "user_statistic_ships_old_rank" => $ships['old_rank'][$user_id],
+                            "user_statistic_ships_rank" => $ships['rank'][$user_id],
+
+                            "user_statistic_technology_old_rank" => $tech['old_rank'][$user_id],
+                            "user_statistic_technology_rank" => $tech['rank'][$user_id],
+
+                            "user_statistic_total_points" => $total['points'][$user_id],
+                            "user_statistic_total_old_rank" => $total['old_rank'][$user_id],
+                            "user_statistic_total_rank" => $rank['tota'] ++,
+
+                            "updated_at" => self::$time
+                        ]);
                 }
             }
         }
-
-        // REMOVE LAST COMMA
-        $values = substr_replace($values, '', -1);
-
-        // FINISH UPDATE QUERY
-        $update_query .= $values;
-        $update_query .= ' ON DUPLICATE KEY UPDATE
-								user_statistic_buildings_old_rank = VALUES(user_statistic_buildings_old_rank),
-								user_statistic_buildings_rank = VALUES(user_statistic_buildings_rank),
-								user_statistic_defenses_old_rank = VALUES(user_statistic_defenses_old_rank),
-								user_statistic_defenses_rank = VALUES(user_statistic_defenses_rank),
-								user_statistic_ships_old_rank = VALUES(user_statistic_ships_old_rank),
-								user_statistic_ships_rank = VALUES(user_statistic_ships_rank),
-								user_statistic_technology_old_rank = VALUES(user_statistic_technology_old_rank),
-								user_statistic_technology_rank = VALUES(user_statistic_technology_rank),
-								user_statistic_total_points = VALUES(user_statistic_total_points),
-								user_statistic_total_old_rank = VALUES(user_statistic_total_old_rank),
-								user_statistic_total_rank = VALUES(user_statistic_total_rank),
-								user_statistic_update_time = VALUES(user_statistic_update_time);';
-
-        // RUN QUERY
-        parent::$db->query($update_query);
 
         // MEMORY CLEAN UP
         unset($all_stats_data, $build, $defs, $ships, $tech, $rank, $update_query, $values);
@@ -361,50 +315,44 @@ class StatisticsLib extends XGPCore
     private static function makeAllyRank()
     {
         // GET ALL DATA FROM THE USERS TO UPDATE
-        $all_stats_data = parent::$db->query(
-            "SELECT a.`alliance_id`,
-            ass.alliance_statistic_technology_rank,
-            ass.alliance_statistic_buildings_rank,
-            ass.alliance_statistic_defenses_rank,
-            ass.alliance_statistic_ships_rank,
-            ass.alliance_statistic_total_rank,
-            SUM(us.user_statistic_buildings_points) AS buildings_points,
-            SUM(us.user_statistic_defenses_points) AS defenses_points,
-            SUM(us.user_statistic_ships_points) AS ships_points,
-            SUM(us.user_statistic_technology_points) AS technology_points,
-            SUM(us.user_statistic_total_points) AS total_points
-            FROM " . ALLIANCE . " AS a
-            LEFT JOIN " . USERS . " AS u ON a.`alliance_id` = u.`user_ally_id`
-            LEFT JOIN " . USERS_STATISTICS . " AS us ON us.`user_statistic_user_id` = u.`user_id`
-            LEFT JOIN " . ALLIANCE_STATISTICS . " AS ass ON ass.`alliance_statistic_alliance_id` = a.`alliance_id`
-            GROUP BY alliance_id"
-        );
-
-        // ANY ALLIANCE ?
-        if (empty($all_stats_data) or parent::$db->numRows($all_stats_data) == 0) {
-
+        $all_stats_data = Capsule::table(ALLIANCE)
+            ->select([
+                ALLIANCE . ".alliance_id",
+                ALLIANCE_STATISTICS . ".alliance_statistic_technology_rank",
+                ALLIANCE_STATISTICS . ".alliance_statistic_buildings_rank",
+                ALLIANCE_STATISTICS . ".alliance_statistic_defenses_rank",
+                ALLIANCE_STATISTICS . ".alliance_statistic_ships_rank",
+                ALLIANCE_STATISTICS . ".alliance_statistic_total_rank",
+            ])
+            ->selectRaw("SUM(`" . Capsule::connection()->getTablePrefix() . USERS_STATISTICS . "`.`user_statistic_buildings_points`) as `buildings_points`")
+            ->selectRaw("SUM(`" . Capsule::connection()->getTablePrefix() . USERS_STATISTICS . "`.`user_statistic_defenses_points`) as `defenses_points`")
+            ->selectRaw("SUM(`" . Capsule::connection()->getTablePrefix() . USERS_STATISTICS . "`.`user_statistic_ships_points`) as `ships_points`")
+            ->selectRaw("SUM(`" . Capsule::connection()->getTablePrefix() . USERS_STATISTICS . "`.`user_statistic_technology_points`) as `technology_points`")
+            ->selectRaw("SUM(`" . Capsule::connection()->getTablePrefix() . USERS_STATISTICS . "`.`user_statistic_total_points`) as `total_points`")
+            ->leftJoin(USERS, ALLIANCE . ".alliance_id", '=', USERS . ".user_ally_id")
+            ->leftJoin(USERS_STATISTICS, USERS_STATISTICS . ".user_statistic_user_id", '=', USERS . ".user_id")
+            ->leftJoin(ALLIANCE_STATISTICS, ALLIANCE_STATISTICS . ".alliance_statistic_alliance_id", '=', ALLIANCE . ".alliance_id")
+            ->groupBy(["alliance_id"]);
+        if (!$all_stats_data->exists())
             return;
-        }
-
         // BUILD ALL THE ARRAYS
-        while ($CurAlliance = parent::$db->fetchAssoc($all_stats_data)) {
+        foreach ($all_stats_data->get() as $CurAlliance)
+        {
+            $tech['old_rank'][$CurAlliance->alliance_id]   = $CurAlliance->alliance_statistic_technology_rank;
+            $tech['points'][$CurAlliance->alliance_id]     = $CurAlliance->technology_points;
 
-            $tech['old_rank'][$CurAlliance['alliance_id']]  = $CurAlliance['alliance_statistic_technology_rank'];
-            $tech['points'][$CurAlliance['alliance_id']]    = $CurAlliance['technology_points'];
+            $build['old_rank'][$CurAlliance->alliance_id]  = $CurAlliance->alliance_statistic_buildings_rank;
+            $build['points'][$CurAlliance->alliance_id]    = $CurAlliance->buildings_points;
 
-            $build['old_rank'][$CurAlliance['alliance_id']] = $CurAlliance['alliance_statistic_buildings_rank'];
-            $build['points'][$CurAlliance['alliance_id']]   = $CurAlliance['buildings_points'];
+            $defs['old_rank'][$CurAlliance->alliance_id]   = $CurAlliance->alliance_statistic_defenses_rank;
+            $defs['points'][$CurAlliance->alliance_id]     = $CurAlliance->ships_points;
 
-            $defs['old_rank'][$CurAlliance['alliance_id']]  = $CurAlliance['alliance_statistic_defenses_rank'];
-            $defs['points'][$CurAlliance['alliance_id']]    = $CurAlliance['defenses_points'];
+            $ships['old_rank'][$CurAlliance->alliance_id]  = $CurAlliance->alliance_statistic_ships_rank;
+            $ships['points'][$CurAlliance->alliance_id]    = $CurAlliance->ships_points;
 
-            $ships['old_rank'][$CurAlliance['alliance_id']] = $CurAlliance['alliance_statistic_ships_rank'];
-            $ships['points'][$CurAlliance['alliance_id']]   = $CurAlliance['ships_points'];
-
-            $total['old_rank'][$CurAlliance['alliance_id']] = $CurAlliance['alliance_statistic_total_rank'];
-            $total['points'][$CurAlliance['alliance_id']]   = $CurAlliance['total_points'];
+            $total['old_rank'][$CurAlliance->alliance_id]  = $CurAlliance->alliance_statistic_total_rank;
+            $total['points'][$CurAlliance->alliance_id]    = $CurAlliance->total_points;
         }
-
         // ORDER THEM FROM HIGHEST TO LOWEST
         arsort($tech['points']);
         arsort($build['points']);
@@ -467,30 +415,6 @@ class StatisticsLib extends XGPCore
             }
         }
 
-        // UPDATE QUERY
-        $update_query = "INSERT INTO " . ALLIANCE_STATISTICS . "
-							(alliance_statistic_alliance_id,
-								alliance_statistic_buildings_points,
-								alliance_statistic_buildings_old_rank,
-								alliance_statistic_buildings_rank,
-								alliance_statistic_defenses_points,
-								alliance_statistic_defenses_old_rank,
-								alliance_statistic_defenses_rank,
-								alliance_statistic_ships_points,
-								alliance_statistic_ships_old_rank,
-								alliance_statistic_ships_rank,
-								alliance_statistic_technology_points,
-								alliance_statistic_technology_old_rank,
-								alliance_statistic_technology_rank,
-								alliance_statistic_total_points,
-								alliance_statistic_total_old_rank,
-								alliance_statistic_total_rank,
-								alliance_statistic_update_time) VALUES ";
-
-        // SET VARIABLES
-        $values = '';
-        $update = '';
-
         // TOTAL POINTS
         // UPDATE QUERY DYNAMIC BLOCK
         foreach ($total as $key => $value) {
@@ -498,54 +422,33 @@ class StatisticsLib extends XGPCore
             if ($key == 'points') {
 
                 foreach ($value as $alliance_id => $data) {
+                    Capsule::table(ALLIANCE_STATISTICS)
+                        ->updateOrInsert(["alliance_statistic_alliance_id" => $alliance_id],[
+                            "alliance_statistic_buildings_old_rank" => $build['old_rank'][$alliance_id],
+                            "alliance_statistic_buildings_rank" => $build['rank'][$alliance_id],
+                            "alliance_statistic_buildings_points" => $build['points'][$alliance_id],
 
-                    $values .= '(' . $alliance_id . ',
-                                ' . $build['points'][$alliance_id] . ',
-                                ' . $build['old_rank'][$alliance_id] . ',
-                                ' . $build['rank'][$alliance_id] . ',
-                                ' . $defs['points'][$alliance_id] . ',
-                                ' . $defs['old_rank'][$alliance_id] . ',
-                                ' . $defs['rank'][$alliance_id] . ',
-                                ' . $ships['points'][$alliance_id] . ',
-                                ' . $ships['old_rank'][$alliance_id] . ',
-                                ' . $ships['rank'][$alliance_id] . ',
-                                ' . $tech['points'][$alliance_id] . ',
-                                ' . $tech['old_rank'][$alliance_id] . ',
-                                ' . $tech['rank'][$alliance_id] . ',
-                                ' . $total['points'][$alliance_id] . ',
-                                ' . $total['old_rank'][$alliance_id] . ',
-                                ' . $rank['tota'] ++ . ',
-                                ' . self::$time . '),';
+                            "alliance_statistic_defenses_old_rank" => $defs['old_rank'][$alliance_id],
+                            "alliance_statistic_defenses_rank" => $defs['rank'][$alliance_id],
+                            "alliance_statistic_defenses_points" => $defs['points'][$alliance_id],
+
+                            "alliance_statistic_ships_old_rank" => $ships['old_rank'][$alliance_id],
+                            "alliance_statistic_ships_rank" => $ships['rank'][$alliance_id],
+                            "alliance_statistic_ships_points" => $ships['points'][$alliance_id],
+
+                            "alliance_statistic_technology_old_rank" => $tech['old_rank'][$alliance_id],
+                            "alliance_statistic_technology_rank" => $tech['rank'][$alliance_id],
+                            "alliance_statistic_technology_points" => $tech['rank'][$alliance_id],
+
+                            "alliance_statistic_total_points" => $total['points'][$alliance_id],
+                            "alliance_statistic_total_old_rank" => $total['old_rank'][$alliance_id],
+                            "alliance_statistic_total_rank" => $rank['tota'] ++,
+
+                            "updated_at" => self::$time
+                        ]);
                 }
             }
         }
-
-        // REMOVE LAST COMMA
-        $values = substr_replace($values, '', -1);
-
-        // FINISH UPDATE QUERY
-        $update_query   .= $values;
-        $update_query   .= ' ON DUPLICATE KEY UPDATE
-                            alliance_statistic_buildings_points = VALUES(alliance_statistic_buildings_points),
-                            alliance_statistic_buildings_old_rank = VALUES(alliance_statistic_buildings_old_rank),
-                            alliance_statistic_buildings_rank = VALUES(alliance_statistic_buildings_rank),
-                            alliance_statistic_defenses_points = VALUES(alliance_statistic_defenses_points),
-                            alliance_statistic_defenses_old_rank = VALUES(alliance_statistic_defenses_old_rank),
-                            alliance_statistic_defenses_rank = VALUES(alliance_statistic_defenses_rank),
-                            alliance_statistic_ships_points = VALUES(alliance_statistic_ships_points),
-                            alliance_statistic_ships_old_rank = VALUES(alliance_statistic_ships_old_rank),
-                            alliance_statistic_ships_rank = VALUES(alliance_statistic_ships_rank),
-                            alliance_statistic_technology_points = VALUES(alliance_statistic_technology_points),
-                            alliance_statistic_technology_old_rank = VALUES(alliance_statistic_technology_old_rank),
-                            alliance_statistic_technology_rank = VALUES(alliance_statistic_technology_rank),
-                            alliance_statistic_total_points = VALUES(alliance_statistic_total_points),
-                            alliance_statistic_total_old_rank = VALUES(alliance_statistic_total_old_rank),
-                            alliance_statistic_total_rank = VALUES(alliance_statistic_total_rank),
-                            alliance_statistic_update_time = VALUES(alliance_statistic_update_time);';
-
-        // RUN QUERY
-        parent::$db->query($update_query);
-
         // MEMORY CLEAN UP
         unset($all_stats_data, $build, $defs, $ships, $tech, $rank, $update_query, $values);
     }
