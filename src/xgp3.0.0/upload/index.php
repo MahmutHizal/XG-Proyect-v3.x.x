@@ -16,6 +16,7 @@ define('IN_LOGIN', true);
 define('XGP_ROOT', './');
 
 
+
 require XGP_ROOT . 'application/core/common.php';
 //$instance = \application\models\game\auth::initAuth();
 //die(var_dump(\application\models\game\auth::user()));
